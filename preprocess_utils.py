@@ -206,35 +206,11 @@ def batch_bbox_iou(box1, box2):
     return intersect / union
 
 
-@tf.function
-def batch_best_anchor_box_finder(config, center_w, center_h, box_size_idx):
+# @tf.function
+def batch_best_anchor_box_finder(config, bbox_xywh, anchor_xywh):
     # find the anchor that best predicts this box
-    best_anchor = -1
-    max_iou     = -1.0
-    # each Anchor box is specialized to have a certain shape.
-    # e.g., flat large rectangle, or small square
 
-    # center_h, center_w: shape:(100,)
-    center_w = tf.expand_dims(center_w, axis = 1) # (100,1)
-    center_h = tf.expand_dims(center_h, axis = 1) # (100,1)
-
-    anchors = config.zero_and_anchors[box_size_idx]  # 3,3,4 => 3,4
-
-    shifted_box = tf.concat([tf.zeros([config.box_buffer,1]),tf.zeros([config.box_buffer,1]),center_w, center_h],axis = 1) # 100, 4
-    # ##  For given object, find the best anchor box!
-    # for i in range(len(anchors)): ## run through each anchor box
-    #     anchor = anchors[i]
-    #     iou    = bbox_iou(shifted_box, anchor)
-    #     if max_iou < iou:
-    #         best_anchor = i
-    #         max_iou     = iou
-
-    expanded_shifted_box = tf.stack([shifted_box]*config.BOX, axis = 1) # 100, new axis n = 3, 4
-    batched_anchors =  tf.stack([anchors]*config.box_buffer, axis = 0) # 100, 3, 4
-
-    
-
-    iou = batch_bbox_iou(expanded_shifted_box, batched_anchors)
+    iou = batch_bbox_iou(bbox_xywh, anchor_xywh)
 
     # print("iou.shape:",iou.shape) # 100, 5, 1
 
@@ -250,93 +226,6 @@ def batch_best_anchor_box_finder(config, center_w, center_h, box_size_idx):
 
 
 
-def batch_data_preprocess(config, img,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor, class_tensor):
-    # x_batch = np.zeros((config.batch_size, config.IMAGE_H, config.IMAGE_W, 3))  # input images
-    # b_batch = np.zeros((config.batch_size, 1     , 1     , 1    ,  config.box_buffer, 4))   # list of self.config['TRUE_self.config['BOX']_BUFFER'] GT boxes
-    # y_batch = np.zeros((config.batch_size, config.GRID_H,  config.GRID_W, config.BOX, 4+1+config.num_of_labels)) # desired network output
-
-    
-    # b_batch = tf.zeros((1,  1, 1, config.box_buffer)) # desired network output
-
-    num_of_bbox = tf.reduce_sum(tf.cast(class_tensor != 0, tf.int32))
-
-    '''
-    deal with small bbox, then middle bbox, then large bbox.
-            (large image)     (midlle image)     (small image)
-    the small bbox will have more anchors than middle and large bbox one
-
-    '''
-    y_batch_list = []
-    b_batch_list = []
-
-    for box_size_idx in range(3):
-        this_resize_scale = 2**(3+box_size_idx)
-
-        y_batch = tf.zeros(((config.IMAGE_H // this_resize_scale), (config.IMAGE_W // this_resize_scale), config.BOX, 4+1+config.num_of_labels)) # desired network output
-
-
-        center_x, center_y = rescale_centerxy(config, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor, this_resize_scale) #  # (100,)  # (100,)
-
-        grid_x = tf.cast(tf.math.floor(center_x),tf.int32) # (100,)
-        grid_y = tf.cast(tf.math.floor(center_y),tf.int32) # (100,)
-
-        center_w, center_h = rescale_cebterwh(config, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor, this_resize_scale) # (100,)  # (100,)
-
-        '''
-        which anchor should we use
-        '''
-
-        grid_x = tf.cast(tf.math.floor(center_x),tf.int32) # (100,)
-        grid_y = tf.cast(tf.math.floor(center_y),tf.int32) # (100,)
-
-        '''
-        find best anchor suit for bbox
-        '''
-        best_anchor,max_iou = batch_best_anchor_box_finder(config, center_w, center_h, box_size_idx) # (100,) (100,)
-
-        # box = [center_x, center_y, center_w, center_h]
-        boxes = tf.stack([center_x, center_y, center_w, center_h], axis = 1) # 100,4 
-        # print("boxes.shape:",boxes.shape)
-        
-        '''
-        making data and put it into y_batch
-        '''
-        update_index = tf.stack([grid_y, grid_x,best_anchor],axis = 1) # the 0,0,0, ... will be those padding. these should be dropped eventaully 
-        update_index = update_index[:num_of_bbox] # (n, 3)
-
-        onehot_cls_label = tf.one_hot(class_tensor, depth = (config.num_of_labels+1)) # + 1 for label 0 I difined: padding
-        onehot_cls_label = onehot_cls_label[:,1:]
-        # print("onehot_cls_label.shape:", onehot_cls_label.shape) # (100, 90)
-
-        update_index_indicator = tf.ones([config.box_buffer,1])
-        # print("update_index_indicator.shape:",update_index_indicator.shape) # (100, 90)
-        updates = tf.concat([boxes, update_index_indicator, onehot_cls_label], axis = 1) # (100,95)
-        updates = updates[:num_of_bbox] # (n, 95)
-
-
-
-        # y_batch[grid_y, grid_x, best_anchor, 0:4] = box
-        y_batch = tf.tensor_scatter_nd_update(y_batch, update_index, updates)
-
-        b_batch = tf.reshape(boxes, [1,1,1,config.box_buffer, 4])
-
-        y_batch_list.append(y_batch)
-        b_batch_list.append(b_batch)
-
-    '''
-    img normalizing
-    '''
-    x_batch = img/255.
-
-    # return best_anchor,max_iou,x_batch, b_batch, y_batch
-    # return [x_batch, b_batch], y_batch
-
-    return {"x":x_batch}, {"small_y":y_batch_list[0],"small_true_boxes": b_batch_list[0], 
-                            "middle_y":y_batch_list[1], "middle_true_boxes":b_batch_list[1], 
-                            "large_y":y_batch_list[2], "large_true_boxes":b_batch_list[2]}
-
-
-
 
 
 def batch_data_preprocess_v3(config, img,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor, class_tensor):
@@ -346,6 +235,9 @@ def batch_data_preprocess_v3(config, img,xmax_tensor,xmin_tensor,ymax_tensor,ymi
 
     
     # b_batch = tf.zeros((1,  1, 1, config.box_buffer)) # desired network output
+
+    print("xmax_tensor:",xmax_tensor.shape)
+    
 
     num_of_bbox = tf.reduce_sum(tf.cast(class_tensor != 0, tf.int32))
 
@@ -361,6 +253,15 @@ def batch_data_preprocess_v3(config, img,xmax_tensor,xmin_tensor,ymax_tensor,ymi
     best_anchor_list = []
     max_iou_list = []
 
+    
+
+
+    center_x, center_y = rescale_centerxy(config, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor, 1) #  # (100,)  # (100,)
+    center_w, center_h = rescale_cebterwh(config, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor, 1) # (100,)  # (100,)
+    # box = [center_x, center_y, center_w, center_h]
+    boxes = tf.stack([center_x, center_y, center_w, center_h], axis = 1) # 100,4 
+    # print("boxes.shape:",boxes.shape)
+
 
     for box_size_idx in range(3):
 
@@ -368,9 +269,28 @@ def batch_data_preprocess_v3(config, img,xmax_tensor,xmin_tensor,ymax_tensor,ymi
         find best anchor suit for bbox
         '''
         this_resize_scale = 2**(3+box_size_idx)
+        
+
+        center_x, center_y = rescale_centerxy(config, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor, this_resize_scale) #  # (100,)  # (100,)
         center_w, center_h = rescale_cebterwh(config, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor, this_resize_scale) # (100,)  # (100,)
+
+        bbox_xywh_scaled = tf.stack([center_x, center_y, center_w, center_h], axis = 1) # 100, 4
+        bbox_xywh_scaled = tf.stack([bbox_xywh_scaled]*config.BOX, axis = 1) # 100, 3, 4
+        # print("bbox_xywh_scaled:",bbox_xywh_scaled.shape)
+
+
+
+        anchors = config.anchors[box_size_idx] # 3,2
+        anchors = tf.stack([anchors]*100, 0) # 100,3,2  
+
+        grid_x = tf.cast(tf.math.floor(center_x),tf.float32) + 0.5 # (100,)
+        grid_y = tf.cast(tf.math.floor(center_y),tf.float32) + 0.5 # (100,)
+        anchors_xy = tf.stack([grid_x, grid_y],axis = 1) # 100, 2
+        anchors_xy = tf.stack([anchors_xy]*3,axis = 1) # 100, 3, 2
+        anchors_xywh = tf.concat([anchors_xy, anchors],axis = 2) # 100,3,4 
+
         center_list.append([center_w, center_h])
-        best_anchor,max_iou = batch_best_anchor_box_finder(config, center_w, center_h, box_size_idx) # (100,) (100,)
+        best_anchor,max_iou = batch_best_anchor_box_finder(config,bbox_xywh_scaled,anchors_xywh) 
         best_anchor_list.append(best_anchor)
 
         max_iou = max_iou[:num_of_bbox]
@@ -408,23 +328,17 @@ def batch_data_preprocess_v3(config, img,xmax_tensor,xmin_tensor,ymax_tensor,ymi
 
         center_x, center_y = rescale_centerxy(config, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor, this_resize_scale) #  # (100,)  # (100,)
 
-        grid_x = tf.cast(tf.math.floor(center_x),tf.int32) # (100,)
-        grid_y = tf.cast(tf.math.floor(center_y),tf.int32) # (100,)
 
-        
 
         '''
         which anchor should we use
         '''
-
         grid_x = tf.cast(tf.math.floor(center_x),tf.int32) # (100,)
         grid_y = tf.cast(tf.math.floor(center_y),tf.int32) # (100,)
 
 
 
-        # box = [center_x, center_y, center_w, center_h]
-        boxes = tf.stack([center_x, center_y, center_w, center_h], axis = 1) # 100,4 
-        # print("boxes.shape:",boxes.shape)
+
         
         '''
         making data and put it into y_batch

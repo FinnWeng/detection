@@ -19,7 +19,7 @@ from keras.utils import io_utils
 
 from kmeans_utils import kmeans, get_best_bbox_setting
 from encode_decode_tfrecord import pretrain_tfrecord_generation, _parse_function, deserialized
-from preprocess_utils import  tf_load_image, tf_resize_image, tf_crop_and_resize_image, batch_data_preprocess, batch_data_preprocess_v3
+from preprocess_utils import  tf_load_image, tf_resize_image, tf_crop_and_resize_image, batch_data_preprocess_v3
 from utils import plot_image_with_grid_cell_partition, plot_grid, OutputRescaler, find_high_class_probability_bbox, nonmax_suppression, draw_boxes
 from loss_utils import get_cell_grid, custom_loss, yolov3_custom_loss
 
@@ -783,8 +783,8 @@ if __name__ == "__main__":
 
     steps_per_epoch = 118287//config.batch_size
     # lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = config.warmup_steps, cos_decay_steps = steps_per_epoch*config.epochs)
-    # lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = steps_per_epoch*3, cos_decay_steps = steps_per_epoch*config.epochs)
-    lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = 1, cos_decay_steps = steps_per_epoch*config.epochs)
+    lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = steps_per_epoch*3, cos_decay_steps = steps_per_epoch*config.epochs)
+    # lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = 1, cos_decay_steps = steps_per_epoch*config.epochs)
 
 
 
@@ -802,9 +802,9 @@ if __name__ == "__main__":
     epoch starts from 1(?)
     '''
 
-    previous_epoch = str(3).zfill(4)
-    checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
-    custom_model.load_weights(checkpoint_path)
+    # previous_epoch = str(3).zfill(4)
+    # checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
+    # custom_model.load_weights(checkpoint_path)
 
     # import pdb
     # pdb.set_trace()
