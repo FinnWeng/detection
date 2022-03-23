@@ -14,6 +14,9 @@ import pandas as pd
 from functools import partial
 import time
 
+from keras.utils import tf_utils
+from keras.utils import io_utils
+
 from kmeans_utils import kmeans, get_best_bbox_setting
 from encode_decode_tfrecord import pretrain_tfrecord_generation, _parse_function, deserialized
 from preprocess_utils import  tf_load_image, tf_resize_image, tf_crop_and_resize_image, batch_data_preprocess, batch_data_preprocess_v3
@@ -23,7 +26,9 @@ from loss_utils import get_cell_grid, custom_loss, yolov3_custom_loss
 import model_config
 
 # from net.detection import Detection_Net, YOLOV2_Net
-from net.detection import Detection_Net, YOLOV3_Net, Swin_Encoder
+from net.detection import Detection_Net, YOLOV3_Net, Swin_Encoder, Swin_YOLOV3_Net
+
+
 
 
 
@@ -38,7 +43,7 @@ def define_config():
     # config.shuffle_buffer = 1000
     config.shuffle_buffer = 100
     config.batch_size = 32
-    config.base_lr = 1e-3
+    config.base_lr = 1e-4
     config.warmup_steps = 3000
     config.epochs = 100
     config.log_dir = "./tf_log/"
@@ -632,10 +637,45 @@ class Custom_Save_Model_Callback(tf.keras.callbacks.ModelCheckpoint):
         if self.save_freq == 'epoch':
             self._save_model(epoch=epoch + self.resume_epoch, batch=None, logs=logs)
 
+
+
+# class TerminateOn_Begin_NaN(tf.keras.callbacks.Callback):
+#     """Callback that terminates training when a NaN loss is encountered.
+#     """
+
+#     def __init__(self):
+#         super(TerminateOn_Begin_NaN, self).__init__()
+#         self._supports_tf_logs = True
+
+#     def on_batch_end(self, batch, logs=None):
+#         logs = logs or {}
+#         loss = logs.get('loss')
+#         if loss is not None:
+#             loss = tf_utils.sync_to_numpy_or_python_type(loss)
+#             if np.isnan(loss) or np.isinf(loss):
+#                 io_utils.print_msg(f'Batch {batch}: Invalid loss, terminating training')
+#                 self.model.stop_training = True
+    
+#     def on_train_begin(self, logs=None):
+#         if self.load_weights_on_restart:
+#             filepath_to_load = (
+#                 self._get_most_recently_modified_file_matching_pattern(self.filepath))
+#             if (filepath_to_load is not None and
+#                 self._checkpoint_exists(filepath_to_load)):
+#                 try:
+#                     # `filepath` may contain placeholders such as `{epoch:02d}`, and
+#                     # thus it attempts to load the most recently modified file with file
+#                     # name matching the pattern.
+#                     self.model.load_weights(filepath_to_load)
+#                 except (IOError, ValueError) as e:
+#                     raise ValueError(
+#                         f'Error loading file from {filepath_to_load}. Reason: {e}')
+
 if __name__ == "__main__":
 
     # tf.data.experimental.enable_debug_mode()
-    tf.config.experimental_run_functions_eagerly(True)
+    # tf.config.experimental_run_functions_eagerly(True)
+    tf.debugging.enable_check_numerics()
 
     gpus = tf.config.experimental.list_physical_devices('GPU')
     # tf.config.set_visible_devices(gpus[0], 'GPU')
@@ -701,178 +741,161 @@ if __name__ == "__main__":
     inspect preprocess
     '''
 
-    ds_train_num_classes = config.num_of_labels
     one_train_data = next(ds_train.as_numpy_iterator())
 
-
-    swin_model_config = model_config.get_swin_config()
-
-    swin_encoder = Swin_Encoder(config, num_classes=ds_train_num_classes, \
-        norm_layer=tf.keras.layers.LayerNormalization,**swin_model_config )
-
-    route_1, route_2, x = swin_encoder(one_train_data[0]["x"])
-
-    import pdb
-    pdb.set_trace()
+    # x_batch, b_batch, y_batch = one_train_data
 
 
+    # y_pred = tf.zeros([config.batch_size, config.GRID_H, config.GRID_W,config.BOX, 4 + 1 + config.num_of_labels], tf.float32)
 
-    # # x_batch, b_batch, y_batch = one_train_data
-
-
-    # # y_pred = tf.zeros([config.batch_size, config.GRID_H, config.GRID_W,config.BOX, 4 + 1 + config.num_of_labels], tf.float32)
-
-    # # loss = custom_loss(config,  y_batch,y_pred, b_batch)
-
-    # # import pdb
-    # # pdb.set_trace()
-
-
-
-    # '''
-    # define loss
-    # '''
-
-    # wrapped_loss = Wrapping_Loss(config, custom_loss)
-
-    # '''
-    # define model
-    # '''
-    # # yolov2_net = YOLOV2_Net(config)
-    # yolov3_net = YOLOV3_Net(config)
-
-    # # build model, expose this to show how to deal with dict as fit() input
-    # model_input = tf.keras.Input(shape=one_train_data[0]["x"].shape[1:],name="image",dtype=tf.float32)
-
-    # # output = yolov2_net(model_input)
-    # y_pred_small_bbox, y_pred_middle_bbox, y_pred_large_bbox = yolov3_net(model_input)
-
-    
-
-
-
-    # custom_model = Custom_Model(inputs = [model_input],outputs = [y_pred_small_bbox, y_pred_middle_bbox, y_pred_large_bbox], config = config)
-
-    # steps_per_epoch = 118287//config.batch_size
-    # lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = config.warmup_steps, cos_decay_steps = steps_per_epoch*config.epochs)
-
-
-
-    
-    
-    # total_hist = {'loss': [], 'giou_loss': [], 'conf_loss': [], 'prob_loss': []}
-
-    # while len(total_hist["loss"]) <= steps_per_epoch:
-
-    #     '''
-    #     define callback
-    #     '''
-    #     '''
-    #     len(total_hist["loss"]) starts from 0
-    #     epoch starts from 1(?)
-    #     '''
-
-
-    #     if len(total_hist["loss"])  > 0:
-    #         previous_epoch = str(len(total_hist["loss"])).zfill(4)
-    #         checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
-    #         custom_model.load_weights(checkpoint_path)
-
-    #     custom_model.compile(
-    #         # optimizer=tf.keras.optimizers.Adam(learning_rate = config.base_lr), 
-    #         optimizer=tf.keras.optimizers.Adam(learning_rate = lr_schedule, clipvalue = 0.5), 
-    #         # loss_fn = custom_loss)
-    #         loss_fn = yolov3_custom_loss)
-
-    #     # define callback 
-    #     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=config.log_dir, histogram_freq=10, update_freq= 10)
-
-
-
-    #     # save_model_callback = tf.keras.callbacks.ModelCheckpoint(
-    #     #     filepath=config.model_path,
-    #     #     save_weights_only= True,
-    #     #     verbose=1)
-
-    #     checkpoint_path = "./model/detection_cp-{epoch:04d}/detection.ckpt"
-    #     # checkpoint_dir = os.path.dirname(checkpoint_path)
-
-    #     print('len(total_hist["loss"]):',len(total_hist["loss"]))
-
-    #     save_model_callback = Custom_Save_Model_Callback(
-    #         filepath=checkpoint_path,
-    #         save_weights_only= True,
-    #         verbose=1,
-    #         resume_epoch = len(total_hist["loss"])
-    #     )
-
-    #     nan_callback = tf.keras.callbacks.TerminateOnNaN()
-
-    #     callback_list = [tensorboard_callback,save_model_callback, nan_callback]
-
-    #     '''
-    #     training
-    #     '''
-        
-    #     hist = custom_model.fit(ds_train,
-    #             epochs=config.epochs, 
-    #             steps_per_epoch=steps_per_epoch,
-    #             # validation_data = ds_val,
-    #             # validation_steps=3,
-    #             callbacks = callback_list).history
-
-
-    #     # hist = custom_model.fit(ds_train,
-    #     #         epochs=2, 
-    #     #         steps_per_epoch=10,
-    #     #         # validation_data = ds_val,
-    #     #         # validation_steps=3,
-    #     #         callbacks = callback_list).history
-
-    #     print('math.isnan(hist["loss"][-1]):',math.isnan(hist["loss"][-1]))
-    #     if not math.isnan(hist["loss"][-1]):
-    #         for key, value in total_hist.items():
-    #             value.extend(hist[key])
-    #     else:
-    #         print("encounter nan in epoch:",len(total_hist["loss"] ))
+    # loss = custom_loss(config,  y_batch,y_pred, b_batch)
 
     # import pdb
     # pdb.set_trace()
 
-    # '''
-    # evaluation
-    # '''
-    # obj_threshold = 0.7
-    # iou_threshold = 0.5
 
-    # # custom_model.load_weights(config.model_path)
 
-    # model_output = custom_model(one_train_data[0]["x"]).numpy()
+    '''
+    define loss
+    '''
 
-    # true_boxes = one_train_data[1]["true_boxes"]
+    wrapped_loss = Wrapping_Loss(config, custom_loss)
 
-    # for i in range(len(model_output)): 
+    '''
+    define model
+    '''
+    # yolov2_net = YOLOV2_Net(config)
+    # yolov3_net = YOLOV3_Net(config)
+    swin_model_config = model_config.get_swin_config()
+    swin_yolov3_net = Swin_YOLOV3_Net(config, swin_model_config)
+
+    # build model, expose this to show how to deal with dict as fit() input
+    model_input = tf.keras.Input(shape=one_train_data[0]["x"].shape[1:],name="image",dtype=tf.float32)
+
+    # output = yolov2_net(model_input)
+    y_pred_small_bbox, y_pred_middle_bbox, y_pred_large_bbox = swin_yolov3_net(model_input)
+
     
-    #     outputRescaler = OutputRescaler(config.anchors)
-    #     netout_scaled   = outputRescaler.fit(model_output[i])
 
-    #     boxes = find_high_class_probability_bbox(netout_scaled,obj_threshold)
 
-    #     if len(boxes) > 0:
-    #         img = one_train_data[0]["x"][i]
-    #         img = np.rint(img*255)
+
+    custom_model = Custom_Model(inputs = [model_input],outputs = [y_pred_small_bbox, y_pred_middle_bbox, y_pred_large_bbox], config = config)
+
+    steps_per_epoch = 118287//config.batch_size
+    # lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = config.warmup_steps, cos_decay_steps = steps_per_epoch*config.epochs)
+    # lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = steps_per_epoch*3, cos_decay_steps = steps_per_epoch*config.epochs)
+    lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = 1, cos_decay_steps = steps_per_epoch*config.epochs)
+
+
+
+    
+    
+    total_hist = {'loss': [], 'giou_loss': [], 'conf_loss': [], 'prob_loss': []}
+
+
+
+    '''
+    define callback
+    '''
+    '''
+    len(total_hist["loss"]) starts from 0
+    epoch starts from 1(?)
+    '''
+
+    previous_epoch = str(3).zfill(4)
+    checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
+    custom_model.load_weights(checkpoint_path)
+
+    # import pdb
+    # pdb.set_trace()
+
+
+    custom_model.compile(
+        # optimizer=tf.keras.optimizers.Adam(learning_rate = config.base_lr), 
+        optimizer=tf.keras.optimizers.Adam(learning_rate = lr_schedule, clipvalue = 0.5), 
+        # loss_fn = custom_loss)
+        loss_fn = yolov3_custom_loss)
+
+    # define callback 
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=config.log_dir, histogram_freq=10, update_freq= 10)
+
+
+
+    # save_model_callback = tf.keras.callbacks.ModelCheckpoint(
+    #     filepath=config.model_path,
+    #     save_weights_only= True,
+    #     verbose=1)
+
+    checkpoint_path = "./model/detection_cp-{epoch:04d}/detection.ckpt"
+    # checkpoint_dir = os.path.dirname(checkpoint_path)
+
+    print('len(total_hist["loss"]):',len(total_hist["loss"]))
+
+    save_model_callback = Custom_Save_Model_Callback(
+        filepath=checkpoint_path,
+        save_weights_only= True,
+        verbose=1,
+        resume_epoch = len(total_hist["loss"])
+    )
+
+    nan_callback = tf.keras.callbacks.TerminateOnNaN()
+
+    callback_list = [tensorboard_callback,save_model_callback, nan_callback]
+
+    '''
+    training
+    '''
+    
+    hist = custom_model.fit(ds_train,
+            epochs=config.epochs, 
+            steps_per_epoch=steps_per_epoch,
+            # validation_data = ds_val,
+            # validation_steps=3,
+            callbacks = callback_list).history
+
+
+    # hist = custom_model.fit(ds_train,
+    #         epochs=2, 
+    #         steps_per_epoch=10,
+    #         # validation_data = ds_val,
+    #         # validation_steps=3,
+    #         callbacks = callback_list).history
+
+
+    '''
+    evaluation
+    '''
+    obj_threshold = 0.7
+    iou_threshold = 0.5
+
+    # custom_model.load_weights(config.model_path)
+
+    model_output = custom_model(one_train_data[0]["x"]).numpy()
+
+    true_boxes = one_train_data[1]["true_boxes"]
+
+    for i in range(len(model_output)): 
+    
+        outputRescaler = OutputRescaler(config.anchors)
+        netout_scaled   = outputRescaler.fit(model_output[i])
+
+        boxes = find_high_class_probability_bbox(netout_scaled,obj_threshold)
+
+        if len(boxes) > 0:
+            img = one_train_data[0]["x"][i]
+            img = np.rint(img*255)
      
             
-    #         final_boxes = nonmax_suppression(boxes,iou_threshold=iou_threshold,obj_threshold=obj_threshold)
-    #         # import pdb
-    #         # pdb.set_trace()
-    #         img = draw_boxes(img,final_boxes,config.cls_label,verbose=True)
+            final_boxes = nonmax_suppression(boxes,iou_threshold=iou_threshold,obj_threshold=obj_threshold)
+            # import pdb
+            # pdb.set_trace()
+            img = draw_boxes(img,final_boxes,config.cls_label,verbose=True)
 
-    #         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    #         cv2.imwrite("model_output_result_{}.png".format(i),img)
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            cv2.imwrite("model_output_result_{}.png".format(i),img)
 
-    # # import pdb
-    # # pdb.set_trace()
+    # import pdb
+    # pdb.set_trace()
 
 
 

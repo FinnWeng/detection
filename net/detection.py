@@ -501,3 +501,25 @@ class Swin_Encoder(tf.keras.Model):
 
         
         return route_1, route_2, x
+
+
+
+class Swin_YOLOV3_Net(tf.keras.Model):
+    def __init__(self, config, swin_model_config):
+        super(Swin_YOLOV3_Net, self).__init__()
+        self.config = config
+        self.encoder = Swin_Encoder(config, num_classes=config.num_of_labels, \
+            norm_layer=tf.keras.layers.LayerNormalization,**swin_model_config )
+        self.decoder = Decoder_Net(config)
+
+        self.reshape1 = tf.keras.layers.Reshape([self.config.GRID_H, self.config.GRID_W, self.config.BOX, 4 + 1 + self.config.num_of_labels])
+    
+
+
+    
+    def call(self, input):
+        x = input
+        route_1, route_2, x = self.encoder(x)
+        conv_small_bbox, conv_middle_bbox, conv_large_bbox = self.decoder(route_1, route_2, x)
+
+        return conv_small_bbox, conv_middle_bbox, conv_large_bbox
