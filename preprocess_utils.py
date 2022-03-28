@@ -67,14 +67,13 @@ def tf_crop_and_resize_image(img, height_tensor, width_tensor, class_tensor,xmax
     new_width = end_x - start_x
     new_height = end_y - start_y
 
-
     img = tf.image.resize(img, [224,224])
     xmax_tensor = (xmax_tensor - tf.cast(start_x,tf.float32))/tf.cast(new_width,tf.float32)*224
     xmin_tensor = (xmin_tensor - tf.cast(start_x,tf.float32))/tf.cast(new_width,tf.float32)*224
     ymax_tensor = (ymax_tensor - tf.cast(start_y,tf.float32))/tf.cast(new_height,tf.float32)*224
     ymin_tensor = (ymin_tensor - tf.cast(start_y,tf.float32))/tf.cast(new_height,tf.float32)*224
     
-    return img,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor, class_tensor
+    return img, height_tensor, width_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor, class_tensor
 
 
 
@@ -206,7 +205,7 @@ def batch_bbox_iou(box1, box2):
     return intersect / union
 
 
-# @tf.function
+@tf.function
 def batch_best_anchor_box_finder(config, bbox_xywh, anchor_xywh):
     # find the anchor that best predicts this box
 
@@ -228,7 +227,7 @@ def batch_best_anchor_box_finder(config, bbox_xywh, anchor_xywh):
 
 
 
-def batch_data_preprocess_v3(config, img,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor, class_tensor):
+def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor, class_tensor):
     # x_batch = np.zeros((config.batch_size, config.IMAGE_H, config.IMAGE_W, 3))  # input images
     # b_batch = np.zeros((config.batch_size, 1     , 1     , 1    ,  config.box_buffer, 4))   # list of self.config['TRUE_self.config['BOX']_BUFFER'] GT boxes
     # y_batch = np.zeros((config.batch_size, config.GRID_H,  config.GRID_W, config.BOX, 4+1+config.num_of_labels)) # desired network output
@@ -381,7 +380,12 @@ def batch_data_preprocess_v3(config, img,xmax_tensor,xmin_tensor,ymax_tensor,ymi
 
     return {"x":x_batch}, {"small_y":y_batch_list[0],"small_true_boxes": b_batch_list[0], 
                             "middle_y":y_batch_list[1], "middle_true_boxes":b_batch_list[1], 
-                            "large_y":y_batch_list[2], "large_true_boxes":b_batch_list[2]}
+                            "large_y":y_batch_list[2], "large_true_boxes":b_batch_list[2],
+                            "height_tensor":height_tensor, "width_tensor":width_tensor}
+
+    # return {"x":x_batch}, {"small_y":y_batch_list[0],"small_true_boxes": b_batch_list[0], 
+    #                     "middle_y":y_batch_list[1], "middle_true_boxes":b_batch_list[1], 
+    #                     "large_y":y_batch_list[2], "large_true_boxes":b_batch_list[2]}
 
 
 

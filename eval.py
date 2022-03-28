@@ -16,11 +16,12 @@ import time
 
 from kmeans_utils import kmeans, get_best_bbox_setting
 from encode_decode_tfrecord import pretrain_tfrecord_generation, _parse_function, deserialized
-from preprocess_utils import  tf_load_image, tf_resize_image, tf_crop_and_resize_image, data_preprocess, batch_data_preprocess
+# from preprocess_utils import  tf_load_image, tf_resize_image, tf_crop_and_resize_image, data_preprocess, batch_data_preprocess
+from preprocess_utils import  tf_load_image, tf_resize_image, tf_crop_and_resize_image, batch_data_preprocess_v3
 from utils import plot_image_with_grid_cell_partition, plot_grid, OutputRescaler, find_high_class_probability_bbox, nonmax_suppression, draw_boxes
-from loss_utils import get_cell_grid, custom_loss
+from loss_utils import get_cell_grid, custom_loss, yolov3_custom_loss
 
-from net.detection import Detection_Net, YOLOV2_Net
+from net.detection import Detection_Net, YOLOV3_Net, Swin_Encoder, Swin_YOLOV3_Net
 
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
@@ -221,7 +222,7 @@ class Custom_Model(tf.keras.Model):
 
 
 
-def save_result(anno_by_image_id_list, config, obj_threshold, iou_threshold,result_path):
+def save_result(anno_by_image_id_list, config, obj_threshold, iou_threshold,result_path,custom_model):
 
     obj_threshold =  obj_threshold
     iou_threshold = iou_threshold 
@@ -364,19 +365,24 @@ if __name__ == "__main__":
 
 
     # detect_net = Detection_Net(config)
-    yolov2_net = YOLOV2_Net(config)
+
+    swin_model_config = model_config.get_swin_config()
+    swin_yolov3_net = Swin_YOLOV3_Net(config, swin_model_config)
 
     # build model, expose this to show how to deal with dict as fit() input
     model_input = tf.keras.Input(shape=(224,224,3),name="image",dtype=tf.float32)
-
-    # output = detect_net(model_input)
-    output = yolov2_net(model_input)
-
-    custom_model = Custom_Model(inputs = [model_input],outputs = [output], config = config)
+    # model_input = tf.keras.Input(shape=one_train_data[0]["x"].shape[1:],name="image",dtype=tf.float32)
 
 
 
-    custom_model.load_weights(config.model_path)
+    y_pred_small_bbox, y_pred_middle_bbox, y_pred_large_bbox = swin_yolov3_net(model_input)
+
+    custom_model = Custom_Model(inputs = [model_input],outputs = [y_pred_small_bbox, y_pred_middle_bbox, y_pred_large_bbox], config = config)
+
+
+    previous_epoch = str(23).zfill(4)
+    checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
+    custom_model.load_weights(checkpoint_path)
 
 
 
@@ -396,7 +402,7 @@ if __name__ == "__main__":
     '''
     save result
     '''
-    save_result(anno_by_image_id_list, config, obj_threshold, iou_threshold,result_path)
+    save_result(anno_by_image_id_list, config, obj_threshold, iou_threshold,result_path,custom_model)
 
 
     '''
