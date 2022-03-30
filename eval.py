@@ -18,10 +18,13 @@ from kmeans_utils import kmeans, get_best_bbox_setting
 from encode_decode_tfrecord import pretrain_tfrecord_generation, _parse_function, deserialized
 # from preprocess_utils import  tf_load_image, tf_resize_image, tf_crop_and_resize_image, data_preprocess, batch_data_preprocess
 from preprocess_utils import  tf_load_image, tf_resize_image, tf_crop_and_resize_image, batch_data_preprocess_v3
-from utils import plot_image_with_grid_cell_partition, plot_grid, OutputRescaler, find_high_class_probability_bbox, nonmax_suppression, draw_boxes
-from loss_utils import get_cell_grid, custom_loss, yolov3_custom_loss
+from utils import plot_image_with_grid_cell_partition, plot_grid, OutputRescaler, find_high_class_probability_bbox,\
+    nonmax_suppression, draw_boxes, postprocess_boxes, nms, draw_bbox
+from loss_utils import get_cell_grid, custom_loss, yolov3_custom_loss, decode
 
 from net.detection import Detection_Net, YOLOV3_Net, Swin_Encoder, Swin_YOLOV3_Net
+
+import model_config
 
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
@@ -38,11 +41,11 @@ class AttrDict(dict):
 
 def define_config():
     config = AttrDict()
-    config.shuffle_buffer = 1000
-    # config.shuffle_buffer = 100
+    # config.shuffle_buffer = 1000
+    config.shuffle_buffer = 100
     config.batch_size = 32
     config.base_lr = 1e-4
-    config.warmup_steps = 1000
+    config.warmup_steps = 3000
     config.epochs = 100
     config.log_dir = "./tf_log/"
     config.model_path = './model/detection.ckpt'
@@ -50,30 +53,36 @@ def define_config():
     config.box_buffer = 100
     config.image_root_path = "/home/data_c/finnweng/coco/train2017/"
 
+    # anchors = tf.convert_to_tensor(
+    #         np.array([0.04076599, 0.061204,
+    #                 0.69486092, 0.74961789,
+    #                 0.13173388, 0.181611,
+    #                 0.48747882 ,0.29158246,
+    #                 0.22299274, 0.49581151]), dtype=tf.float32)
+
     anchors = tf.convert_to_tensor(
-            np.array([0.04076599, 0.061204,
-                    0.69486092, 0.74961789,
-                    0.13173388, 0.181611,
-                    0.48747882 ,0.29158246,
-                    0.22299274, 0.49581151]), dtype=tf.float32)
+        np.array([1.25,1.625, 2.0,3.75, 4.125,2.875, 
+                1.875,3.8125, 3.875,2.8125, 3.6875,7.4375, 
+                3.625,2.8125, 4.875,6.1875, 11.65625,10.1875]), dtype=tf.float32) # for anchors1: 1/8, for anchors2: 1/16, for anchors3: 1/32
 
-    
+    anchors = tf.reshape(anchors, [3,3,2])
 
-    # config.anchors = [[0, 0,anchors[2*i], anchors[2*i+1]] for i in range(int(len(anchors)//2))]
-    
-    anchors = tf.reshape(anchors, [-1,2])
+
+
     config.anchors = anchors
 
     anchor_zeros = tf.zeros(anchors.shape)
-    config.zero_and_anchors = tf.concat([anchor_zeros, anchors], axis = -1)
+    config.zero_and_anchors = tf.concat([anchor_zeros, anchors], axis = -1) # [3,3,4]
+
+    config.strides= [8, 16, 32]
     
     config.IMAGE_H = 224
     config.IMAGE_W = 224
-    config.GRID_H = 7
-    config.GRID_W = 7
+    config.GRID_H = config.IMAGE_H//(32)
+    config.GRID_W = config.IMAGE_W//(32)
     config.num_of_labels = 80 # there're missing id in json_data["categories"]
     # config.BOX = int(len(config.anchors)/2)
-    config.BOX = anchors.shape[0]
+    config.BOX = anchors.shape[1]
 
     '''
     0 for index use for traning (+1 for 0 is for padding)
@@ -81,12 +90,24 @@ def define_config():
     '''
     config.cls_label = [[1, 'person', 1], [2, 'bicycle', 2], [3, 'car', 3], [4, 'motorcycle', 4], [5, 'airplane', 5], [6, 'bus', 6], [7, 'train', 7], [8, 'truck', 8], [9, 'boat', 9], [10, 'traffic light', 10], [11, 'fire hydrant', 11], [12, 'stop sign', 13], [13, 'parking meter', 14], [14, 'bench', 15], [15, 'bird', 16], [16, 'cat', 17], [17, 'dog', 18], [18, 'horse', 19], [19, 'sheep', 20], [20, 'cow', 21], [21, 'elephant', 22], [22, 'bear', 23], [23, 'zebra', 24], [24, 'giraffe', 25], [25, 'backpack', 27], [26, 'umbrella', 28], [27, 'handbag', 31], [28, 'tie', 32], [29, 'suitcase', 33], [30, 'frisbee', 34], [31, 'skis', 35], [32, 'snowboard', 36], [33, 'sports ball', 37], [34, 'kite', 38], [35, 'baseball bat', 39], [36, 'baseball glove', 40], [37, 'skateboard', 41], [38, 'surfboard', 42], [39, 'tennis racket', 43], [40, 'bottle', 44], [41, 'wine glass', 46], [42, 'cup', 47], [43, 'fork', 48], [44, 'knife', 49], [45, 'spoon', 50], [46, 'bowl', 51], [47, 'banana', 52], [48, 'apple', 53], [49, 'sandwich', 54], [50, 'orange', 55], [51, 'broccoli', 56], [52, 'carrot', 57], [53, 'hot dog', 58], [54, 'pizza', 59], [55, 'donut', 60], [56, 'cake', 61], [57, 'chair', 62], [58, 'couch', 63], [59, 'potted plant', 64], [60, 'bed', 65], [61, 'dining table', 67], [62, 'toilet', 70], [63, 'tv', 72], [64, 'laptop', 73], [65, 'mouse', 74], [66, 'remote', 75], [67, 'keyboard', 76], [68, 'cell phone', 77], [69, 'microwave', 78], [70, 'oven', 79], [71, 'toaster', 80], [72, 'sink', 81], [73, 'refrigerator', 82], [74, 'book', 84], [75, 'clock', 85], [76, 'vase', 86], [77, 'scissors', 87], [78, 'teddy bear', 88], [79, 'hair drier', 89], [80, 'toothbrush', 90]]
 
-    config.cell_grid = get_cell_grid(config.GRID_W,config.GRID_H,config.batch_size,config.BOX)
+    bbox_grid_list = []
+    for box_size_idx in range(3):
+        this_resize_scale = 2**(3+box_size_idx)
+        bbox_grid = get_cell_grid(config.IMAGE_W//this_resize_scale,config.IMAGE_H//this_resize_scale,config.batch_size,config.BOX)
+        bbox_grid_list.append(bbox_grid)
+
+
+    config.cell_grid = bbox_grid_list
 
     config.LAMBDA_NO_OBJECT = 1.0
     config.LAMBDA_OBJECT    = 5.0
     config.LAMBDA_COORD     = 1.0
     config.LAMBDA_CLASS     = 1.0
+
+    config.IOU_LOSS_THRESH = 0.5
+
+    config.model_dim = 32
+
 
     return config
 
@@ -250,7 +271,9 @@ def save_result(anno_by_image_id_list, config, obj_threshold, iou_threshold,resu
         '''
         preprocess
         '''
+
         dim = (224,224) # (width, height)
+        input_size = (224)
         x_batch = cv2.resize(img, dim, interpolation = cv2.INTER_AREA)
         # cv2.imwrite("x_batch.png",x_batch)
 
@@ -262,51 +285,56 @@ def save_result(anno_by_image_id_list, config, obj_threshold, iou_threshold,resu
         inference
         '''
 
-        this_output = custom_model(x_batch).numpy()
+        pred_bbox = custom_model.predict(x_batch) # 3, (32, 28, 28, 3, 85) 
 
-        netout_scaled   = outputRescaler.fit(this_output[0])
+        for i in range(len(pred_bbox[0])):
+            one_conv_small_bbox, one_conv_middle_bbox, one_conv_large_bbox = pred_bbox[0][i], pred_bbox[1][i], pred_bbox[2][i]
+            one_pred_bbox = [one_conv_small_bbox, one_conv_middle_bbox, one_conv_large_bbox]
 
-     
+            one_pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in one_pred_bbox]
+            one_pred_bbox = tf.concat(one_pred_bbox, axis=0).numpy()
 
-        boxes = find_high_class_probability_bbox(netout_scaled,obj_threshold)
 
-        if len(boxes) > 0:
-            final_boxes = nonmax_suppression(boxes,iou_threshold=iou_threshold,obj_threshold=obj_threshold)
+            one_original_image_size = np.array(list(img.shape[0:2]))
 
+            bboxes = postprocess_boxes(one_pred_bbox, one_original_image_size.tolist(), input_size, 0.3)
+            bboxes = nms(bboxes, 0.45, method='nms')
+
+
+
+            img = draw_bbox(img, bboxes, config.cls_label)
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            img = draw_boxes(img,final_boxes,config.cls_label,verbose=False)
-
             cv2.imwrite("./result/model_output_result_{}.png".format(idx),img)
 
-            # import pdb
-            # pdb.set_trace()          
-    
+        # import pdb
+        # pdb.set_trace()
+
+        if len(bboxes) > 0:
+
+                    
+
 
         
-            for box in final_boxes:
-                one_box_xmin = box.xmin.tolist()
-                one_box_ymin = box.ymin.tolist()
-                one_box_xmax = box.xmax.tolist()
-                one_box_ymax = box.ymax.tolist()
+            for box in bboxes:
+                '''
+                coor = np.array(bbox[:4], dtype=np.int32)
+                score = bbox[4]
+                class_ind = int(bbox[5])
+                c1, c2 = (coor[0], coor[1]), (coor[2], coor[3]), left up and right down, origin is left up.
+                cv2.rectangle(image, c1, c2, bbox_color, bbox_thick)
+                '''
+                coor = np.array(box[:4], dtype=np.int32).tolist()
+                bbox = [coor[0], coor[1],  coor[2] - coor[0], coor[3] - coor[1]]
 
-                one_box_w = one_box_xmax - one_box_xmin
-                one_box_h = one_box_ymax - one_box_ymin
-
-                one_box_label = box.get_label()
-                one_box_score = box.get_score()
-                # print("this_id:",type(this_id))
-                # print("one_box_label:",one_box_label)
-                # print("score:", type(one_box_score))
-                # import pdb
-                # pdb.set_trace()
-
-                category_id = one_box_label.tolist() # this is idx, not category_id
+                category_id = int(box[5])
                 category_id = config.cls_label[category_id][2]
 
-                bbox = [one_box_xmin*this_img_width, one_box_ymin*this_img_height, one_box_w*this_img_width, one_box_h*this_img_height]
-                # print("bbox:",bbox, one_box_xmin, this_img_width)
-                one_box = {"image_id":this_id,"category_id":category_id,"bbox":bbox,"score":one_box_score.tolist()} # the label needs +1 to become coco label
-                
+                one_box_score = box[4].tolist()
+
+
+                one_box = {"image_id":this_id,"category_id":category_id,"bbox":bbox,"score":one_box_score} # the label needs +1 to become coco label
+                # import pdb
+                # pdb.set_trace()
                 box_list.append(copy.deepcopy(one_box))
 
                 # print("one_box;", one_box)
@@ -346,7 +374,7 @@ if __name__ == "__main__":
     annType = annType[1]      #specify type here
 
     config = define_config()
-    model_config = define_model_config()
+    # model_config = define_model_config()
 
 
     json_data = get_json_data(annotation_path)
@@ -377,10 +405,17 @@ if __name__ == "__main__":
 
     y_pred_small_bbox, y_pred_middle_bbox, y_pred_large_bbox = swin_yolov3_net(model_input)
 
-    custom_model = Custom_Model(inputs = [model_input],outputs = [y_pred_small_bbox, y_pred_middle_bbox, y_pred_large_bbox], config = config)
+    bbox_tensors = []
+    for i, fm in enumerate([y_pred_small_bbox, y_pred_middle_bbox, y_pred_large_bbox]):
+        bbox_tensor = decode(config, fm, i)
+        bbox_tensors.append(bbox_tensor)
 
 
-    previous_epoch = str(23).zfill(4)
+    # custom_model = Custom_Model(inputs = [model_input],outputs = [y_pred_small_bbox, y_pred_middle_bbox, y_pred_large_bbox], config = config)
+    custom_model = Custom_Model(inputs = [model_input],outputs = bbox_tensors, config = config)
+
+
+    previous_epoch = str(99).zfill(4)
     checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
     custom_model.load_weights(checkpoint_path)
 
@@ -389,8 +424,11 @@ if __name__ == "__main__":
     anno_by_image_id_list = get_anno_by_image_id_list(json_data)
 
 
+    # obj_threshold = 0.7
+    # iou_threshold = 0.5
     obj_threshold = 0.001
     iou_threshold = 0.5
+
 
     box_list = []
 

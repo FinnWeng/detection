@@ -1,0 +1,14 @@
+
+*.tfrecord
+__pycache__
+tf_log
+*.json
+model
+test_cosine_decay.py
+arxiv
+*.png
+*.jpg
+result
+
+train2017
+val2017
