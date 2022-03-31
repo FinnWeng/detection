@@ -200,21 +200,20 @@ def batch_bbox_iou(box1, box2):
     w1, h1 = box1[:,:,2:3]-box1[:,:,0:1], box1[:,:,3:4]-box1[:,:,1:2]
     w2, h2 = box2[:,:,2:3]-box2[:,:,0:1], box2[:,:,3:4]-box2[:,:,1:2]
 
-    union = w1*h1 + w2*h2 - intersect
+    union = w1*h1 + w2*h2 - intersect + 1e-10
 
     return intersect / union
 
 
 @tf.function
-def batch_best_anchor_box_finder(config, bbox_xywh, anchor_xywh):
+def batch_best_anchor_box_finder(config, ious):
     # find the anchor that best predicts this box
 
-    iou = batch_bbox_iou(bbox_xywh, anchor_xywh)
 
     # print("iou.shape:",iou.shape) # 100, 5, 1
 
-    best_anchor = tf.math.argmax(iou, axis = 1, output_type=tf.int32)
-    max_iou = tf.reduce_max(iou, axis = 1)
+    best_anchor = tf.math.argmax(ious, axis = 1, output_type=tf.int32)
+    max_iou = tf.reduce_max(ious, axis = 1)
 
     best_anchor = tf.reshape(best_anchor, [config.box_buffer])
     max_iou = tf.reshape(max_iou, [config.box_buffer])
@@ -227,7 +226,172 @@ def batch_best_anchor_box_finder(config, bbox_xywh, anchor_xywh):
 
 
 
+
+
+@tf.function
 def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor, class_tensor):
+    # x_batch = np.zeros((config.batch_size, config.IMAGE_H, config.IMAGE_W, 3))  # input images
+    # b_batch = np.zeros((config.batch_size, 1     , 1     , 1    ,  config.box_buffer, 4))   # list of self.config['TRUE_self.config['BOX']_BUFFER'] GT boxes
+    # y_batch = np.zeros((config.batch_size, config.GRID_H,  config.GRID_W, config.BOX, 4+1+config.num_of_labels)) # desired network output
+
+    
+    # b_batch = tf.zeros((1,  1, 1, config.box_buffer)) # desired network output
+
+    print("xmax_tensor:",xmax_tensor.shape)
+    
+
+    num_of_bbox = tf.reduce_sum(tf.cast(class_tensor != 0, tf.int32))
+
+    '''
+    deal with small bbox, then middle bbox, then large bbox.
+            (large image)     (midlle image)     (small image)
+    the small bbox will have more anchors than middle and large bbox one
+
+    '''
+    y_batch_list = []
+    b_batch_list = []
+    center_list = []
+    best_anchor_list = []
+    max_iou_list = []
+    ious_list = []
+
+    
+
+
+    center_x, center_y = rescale_centerxy(config, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor, 1) #  # (100,)  # (100,)
+    center_w, center_h = rescale_cebterwh(config, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor, 1) # (100,)  # (100,)
+    # box = [center_x, center_y, center_w, center_h]
+    boxes = tf.stack([center_x, center_y, center_w, center_h], axis = 1) # 100,4 
+
+
+    for box_size_idx in range(3):
+
+        '''
+        find best anchor suit for bbox
+        '''
+        this_resize_scale = 2**(3+box_size_idx)
+
+        y_batch = tf.zeros(((config.IMAGE_H // this_resize_scale), (config.IMAGE_W // this_resize_scale), config.BOX, 4+1+config.num_of_labels)) # desired network output        
+
+        center_x, center_y = rescale_centerxy(config, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor, this_resize_scale) #  # (100,)  # (100,)
+        center_w, center_h = rescale_cebterwh(config, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor, this_resize_scale) # (100,)  # (100,)
+
+        bbox_xywh_scaled = tf.stack([center_x, center_y, center_w, center_h], axis = 1) # 100, 4
+        bbox_xywh_scaled = tf.stack([bbox_xywh_scaled]*config.BOX, axis = 1) # 100, 3, 4
+        # print("bbox_xywh_scaled:",bbox_xywh_scaled.shape)
+
+
+
+        anchors = config.anchors[box_size_idx] # 3,2
+        anchors = tf.stack([anchors]*config.box_buffer, 0) # 100,3,2  
+
+        grid_x = tf.cast(tf.math.floor(center_x),tf.int32) # (100,)
+        grid_y = tf.cast(tf.math.floor(center_y),tf.int32) # (100,)
+        anchors_xy = tf.cast(tf.stack([grid_x, grid_y],axis = 1),tf.float32) + 0.5 # 100, 2
+        anchors_xy = tf.stack([anchors_xy]*config.BOX,axis = 1) # 100, 3, 2
+        anchors_xywh = tf.concat([anchors_xy, anchors],axis = 2) # 100,3,4 
+
+        center_list.append([center_w, center_h])
+
+        '''
+        update_or_not: # (num_of_box, config.BOX)
+        updates: # (num_of_box, 85), include corresponding grid: # (num_of_box,4)
+        [updates]*config.BOX # (num_of_box, config.BOX, 85)
+
+        tensor:  (config.IMAGE_H // this_resize_scale), (config.IMAGE_W // this_resize_scale), config.BOX, 85))
+        outer_shape = tensor.shape[:index_depth] = (config.IMAGE_H // this_resize_scale), (config.IMAGE_W // this_resize_scale), (config.BOX)
+        inner_shape = 85
+
+        index_depth = 3 # 3 for  (config.IMAGE_H // this_resize_scale), (config.IMAGE_W // this_resize_scale), (config.BOX)
+        batch_shape = num_of_box
+        index_shape: [num_of_box, 3] 
+
+        update: batch_shape + inner_shape = (num_of_box, 85)
+
+
+        tensor:  (config.IMAGE_H // this_resize_scale), (config.IMAGE_W // this_resize_scale), config.BOX, 85))
+        outer_shape =  (config.IMAGE_H // this_resize_scale), (config.IMAGE_W // this_resize_scale)
+        inner_shape = config.BOX, 85
+
+        update_value: # (num_of_box, 85), include corresponding grid: # (num_of_box,4)
+        update_or_not: # (num_of_box, config.BOX)
+        update_value = update_value*3 # ([num_of_box, 3, 85])
+        update = update_value* update_or_not # (num_of_box, 3, 85)
+
+        index_depth = 2 # 2 for  (config.IMAGE_H // this_resize_scale), (config.IMAGE_W // this_resize_scale)
+        batch_shape = (num_of_box)
+        index_shape = (num_of_box, 2)
+        '''
+
+        ious = batch_bbox_iou(bbox_xywh_scaled,anchors_xywh)
+        # print("ious:", ious.shape) # (100, config.BOX, 1)
+        ious = tf.reshape(ious, [config.box_buffer,config.BOX]) # (100, config.BOX)
+
+        best_anchor,max_iou = batch_best_anchor_box_finder(config, ious) 
+        best_anchor_one_hot = tf.one_hot(best_anchor, depth = config.BOX) # (100, config.BOX)
+
+        update_or_not = ious + best_anchor_one_hot # (100, config.BOX)
+        update_or_not = tf.clip_by_value(update_or_not, clip_value_min=0, clip_value_max=1) # (100, config.BOX)
+
+        update_or_not = update_or_not[:num_of_bbox]
+        update_or_not = tf.expand_dims(update_or_not, axis = -1) # num_of_bbox, config.BOX, 1
+        # print("update_or_not:",update_or_not.shape)
+
+        onehot_cls_label = tf.one_hot(class_tensor, depth = (config.num_of_labels))
+        update_index_indicator = tf.ones([config.box_buffer,1])
+        # print("update_index_indicator.shape:",update_index_indicator.shape) # (100, 90)
+        update_value = tf.concat([boxes, update_index_indicator, onehot_cls_label], axis = 1) # (100,95)
+        update_value = update_value[:num_of_bbox] # (n, 95)
+        update_value = tf.stack([update_value]*config.BOX, axis = 1) # ([num_of_box, config.BOX, 85])
+
+        updates = update_value* update_or_not 
+        # print("updates:",updates.shape)
+
+
+        update_index = tf.stack([grid_y, grid_x],axis = 1) # the 0,0,0, ... will be those padding. these should be dropped eventaully 
+        update_index = update_index[:num_of_bbox] # (n, 2)
+        # print("update_index:",update_index.shape)
+
+
+        # max_iou = max_iou[:num_of_bbox]
+
+
+
+        y_batch = tf.tensor_scatter_nd_update(y_batch, update_index, updates)
+
+        b_batch = tf.reshape(boxes, [1,1,1,config.box_buffer, 4])
+
+        y_batch_list.append(y_batch)
+        b_batch_list.append(b_batch)
+
+
+
+
+
+
+
+    '''
+    img normalizing
+    '''
+    x_batch = img/255.
+
+    # return best_anchor,max_iou,x_batch, b_batch, y_batch
+    # return [x_batch, b_batch], y_batch
+
+    return {"x":x_batch}, {"small_y":y_batch_list[0],"small_true_boxes": b_batch_list[0], 
+                            "middle_y":y_batch_list[1], "middle_true_boxes":b_batch_list[1], 
+                            "large_y":y_batch_list[2], "large_true_boxes":b_batch_list[2],
+                            "height_tensor":height_tensor, "width_tensor":width_tensor}
+
+    # return {"x":x_batch}, {"small_y":y_batch_list[0],"small_true_boxes": b_batch_list[0], 
+    #                     "middle_y":y_batch_list[1], "middle_true_boxes":b_batch_list[1], 
+    #                     "large_y":y_batch_list[2], "large_true_boxes":b_batch_list[2]}
+
+
+
+
+
+def batch_data_preprocess_v3_old(config, img, height_tensor, width_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor, class_tensor):
     # x_batch = np.zeros((config.batch_size, config.IMAGE_H, config.IMAGE_W, 3))  # input images
     # b_batch = np.zeros((config.batch_size, 1     , 1     , 1    ,  config.box_buffer, 4))   # list of self.config['TRUE_self.config['BOX']_BUFFER'] GT boxes
     # y_batch = np.zeros((config.batch_size, config.GRID_H,  config.GRID_W, config.BOX, 4+1+config.num_of_labels)) # desired network output
@@ -297,7 +461,7 @@ def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, xmax_tens
 
     max_iou_array = tf.stack(max_iou_list, axis = 0)
     # print("max_iou_array:",max_iou_array.shape)
-    great_max_iou_array = tf.cast(max_iou_array>0.3, tf.float32) # (3,n_boxes)
+    great_max_iou_array = tf.cast(max_iou_array>config.take_upper_threshold, tf.float32) # (3,n_boxes)
     # print("great_max_iou_array:",great_max_iou_array.shape)
 
     max_iou_idx = tf.argmax(max_iou_array,axis = 0)
@@ -358,7 +522,9 @@ def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, xmax_tens
         # print("this_update_max_iou_array:",this_update_max_iou_array[...,0])
 
         updates = updates*this_update_max_iou_array
-        # print("updates(after):",updates[...,0])
+        print("updates(after):",updates.shape)
+        print("update_index.shape:", update_index.shape)
+        print("y_batch:",y_batch.shape)
 
 
 
@@ -386,8 +552,3 @@ def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, xmax_tens
     # return {"x":x_batch}, {"small_y":y_batch_list[0],"small_true_boxes": b_batch_list[0], 
     #                     "middle_y":y_batch_list[1], "middle_true_boxes":b_batch_list[1], 
     #                     "large_y":y_batch_list[2], "large_true_boxes":b_batch_list[2]}
-
-
-
-
-    
