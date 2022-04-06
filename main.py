@@ -807,9 +807,9 @@ if __name__ == "__main__":
     epoch starts from 1(?)
     '''
 
-    # previous_epoch = str(3).zfill(4)
-    # checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
-    # custom_model.load_weights(checkpoint_path)
+    previous_epoch = str(12).zfill(4)
+    checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
+    custom_model.load_weights(checkpoint_path)
 
     # import pdb
     # pdb.set_trace()

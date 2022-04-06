@@ -34,6 +34,8 @@ import copy
 
 
 
+
+
 class AttrDict(dict):
 
     __setattr__ = dict.__setitem__
@@ -85,10 +87,15 @@ def define_config():
     config.BOX = anchors.shape[1]
 
     '''
-    0 for index use for traning (+1 for 0 is for padding)
+    0 for index use for traning ( NOT +1 for 0 is for padding ANY more!!!)
     2 for ture label
     '''
-    config.cls_label = [[1, 'person', 1], [2, 'bicycle', 2], [3, 'car', 3], [4, 'motorcycle', 4], [5, 'airplane', 5], [6, 'bus', 6], [7, 'train', 7], [8, 'truck', 8], [9, 'boat', 9], [10, 'traffic light', 10], [11, 'fire hydrant', 11], [12, 'stop sign', 13], [13, 'parking meter', 14], [14, 'bench', 15], [15, 'bird', 16], [16, 'cat', 17], [17, 'dog', 18], [18, 'horse', 19], [19, 'sheep', 20], [20, 'cow', 21], [21, 'elephant', 22], [22, 'bear', 23], [23, 'zebra', 24], [24, 'giraffe', 25], [25, 'backpack', 27], [26, 'umbrella', 28], [27, 'handbag', 31], [28, 'tie', 32], [29, 'suitcase', 33], [30, 'frisbee', 34], [31, 'skis', 35], [32, 'snowboard', 36], [33, 'sports ball', 37], [34, 'kite', 38], [35, 'baseball bat', 39], [36, 'baseball glove', 40], [37, 'skateboard', 41], [38, 'surfboard', 42], [39, 'tennis racket', 43], [40, 'bottle', 44], [41, 'wine glass', 46], [42, 'cup', 47], [43, 'fork', 48], [44, 'knife', 49], [45, 'spoon', 50], [46, 'bowl', 51], [47, 'banana', 52], [48, 'apple', 53], [49, 'sandwich', 54], [50, 'orange', 55], [51, 'broccoli', 56], [52, 'carrot', 57], [53, 'hot dog', 58], [54, 'pizza', 59], [55, 'donut', 60], [56, 'cake', 61], [57, 'chair', 62], [58, 'couch', 63], [59, 'potted plant', 64], [60, 'bed', 65], [61, 'dining table', 67], [62, 'toilet', 70], [63, 'tv', 72], [64, 'laptop', 73], [65, 'mouse', 74], [66, 'remote', 75], [67, 'keyboard', 76], [68, 'cell phone', 77], [69, 'microwave', 78], [70, 'oven', 79], [71, 'toaster', 80], [72, 'sink', 81], [73, 'refrigerator', 82], [74, 'book', 84], [75, 'clock', 85], [76, 'vase', 86], [77, 'scissors', 87], [78, 'teddy bear', 88], [79, 'hair drier', 89], [80, 'toothbrush', 90]]
+    # config.cls_label = [[1, 'person', 1], [2, 'bicycle', 2], [3, 'car', 3], [4, 'motorcycle', 4], [5, 'airplane', 5], [6, 'bus', 6], [7, 'train', 7], [8, 'truck', 8], [9, 'boat', 9], [10, 'traffic light', 10], [11, 'fire hydrant', 11], [12, 'stop sign', 13], [13, 'parking meter', 14], [14, 'bench', 15], [15, 'bird', 16], [16, 'cat', 17], [17, 'dog', 18], [18, 'horse', 19], [19, 'sheep', 20], [20, 'cow', 21], [21, 'elephant', 22], [22, 'bear', 23], [23, 'zebra', 24], [24, 'giraffe', 25], [25, 'backpack', 27], [26, 'umbrella', 28], [27, 'handbag', 31], [28, 'tie', 32], [29, 'suitcase', 33], [30, 'frisbee', 34], [31, 'skis', 35], [32, 'snowboard', 36], [33, 'sports ball', 37], [34, 'kite', 38], [35, 'baseball bat', 39], [36, 'baseball glove', 40], [37, 'skateboard', 41], [38, 'surfboard', 42], [39, 'tennis racket', 43], [40, 'bottle', 44], [41, 'wine glass', 46], [42, 'cup', 47], [43, 'fork', 48], [44, 'knife', 49], [45, 'spoon', 50], [46, 'bowl', 51], [47, 'banana', 52], [48, 'apple', 53], [49, 'sandwich', 54], [50, 'orange', 55], [51, 'broccoli', 56], [52, 'carrot', 57], [53, 'hot dog', 58], [54, 'pizza', 59], [55, 'donut', 60], [56, 'cake', 61], [57, 'chair', 62], [58, 'couch', 63], [59, 'potted plant', 64], [60, 'bed', 65], [61, 'dining table', 67], [62, 'toilet', 70], [63, 'tv', 72], [64, 'laptop', 73], [65, 'mouse', 74], [66, 'remote', 75], [67, 'keyboard', 76], [68, 'cell phone', 77], [69, 'microwave', 78], [70, 'oven', 79], [71, 'toaster', 80], [72, 'sink', 81], [73, 'refrigerator', 82], [74, 'book', 84], [75, 'clock', 85], [76, 'vase', 86], [77, 'scissors', 87], [78, 'teddy bear', 88], [79, 'hair drier', 89], [80, 'toothbrush', 90]]
+    config.cls_label = [[0, 'person', 1], [1, 'bicycle', 2], [2, 'car', 3], [3, 'motorcycle', 4], [4, 'airplane', 5], [5, 'bus', 6], [6, 'train', 7], [7, 'truck', 8], [8, 'boat', 9], [9, 'traffic light', 10], [10, 'fire hydrant', 11], [11, 'stop sign', 13], [12, 'parking meter', 14], [13, 'bench', 15], [14, 'bird', 16], [15, 'cat', 17], [16, 'dog', 18], [17, 'horse', 19], [18, 'sheep', 20], [19, 'cow', 21], [20, 'elephant', 22], [21, 'bear', 23], [22, 'zebra', 24], [23, 'giraffe', 25], [24, 'backpack', 27], [25, 'umbrella', 28], [26, 'handbag', 31], [27, 'tie', 32], [28, 'suitcase', 33], [29, 'frisbee', 34], [30, 'skis', 35], [31, 'snowboard', 36], [32, 'sports ball', 37], [33, 'kite', 38], [34, 'baseball bat', 39], [35, 'baseball glove', 40], [36, 'skateboard', 41], [37, 'surfboard', 42], [38, 'tennis racket', 43], [39, 'bottle', 44], [40, 'wine glass', 46], [41, 'cup', 47], [42, 'fork', 48], [43, 'knife', 49], [44, 'spoon', 50], [45, 'bowl', 51], [46, 'banana', 52], [47, 'apple', 53], [48, 'sandwich', 54], [49, 'orange', 55], [50, 'broccoli', 56], [51, 'carrot', 57], [52, 'hot dog', 58], [53, 'pizza', 59], [54, 'donut', 60], [55, 'cake', 61], [56, 'chair', 62], [57, 'couch', 63], [58, 'potted plant', 64], [59, 'bed', 65], [60, 'dining table', 67], [61, 'toilet', 70], [62, 'tv', 72], [63, 'laptop', 73], [64, 'mouse', 74], [65, 'remote', 75], [66, 'keyboard', 76], [67, 'cell phone', 77], [68, 'microwave', 78], [69, 'oven', 79], [70, 'toaster', 80], [71, 'sink', 81], [72, 'refrigerator', 82], [73, 'book', 84], [74, 'clock', 85], [75, 'vase', 86], [76, 'scissors', 87], [77, 'teddy bear', 88], [78, 'hair drier', 89], [79, 'toothbrush', 90]]
+
+
+
+    config.take_upper_threshold = 0.3
 
     bbox_grid_list = []
     for box_size_idx in range(3):
@@ -297,8 +304,8 @@ def save_result(anno_by_image_id_list, config, obj_threshold, iou_threshold,resu
 
             one_original_image_size = np.array(list(img.shape[0:2]))
 
-            bboxes = postprocess_boxes(one_pred_bbox, one_original_image_size.tolist(), input_size, 0.3)
-            bboxes = nms(bboxes, 0.45, method='nms')
+            bboxes = postprocess_boxes(one_pred_bbox, one_original_image_size.tolist(), input_size, obj_threshold)
+            bboxes = nms(bboxes, iou_threshold, method='nms')
 
 
 
@@ -415,7 +422,7 @@ if __name__ == "__main__":
     custom_model = Custom_Model(inputs = [model_input],outputs = bbox_tensors, config = config)
 
 
-    previous_epoch = str(99).zfill(4)
+    previous_epoch = str(90).zfill(4)
     checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
     custom_model.load_weights(checkpoint_path)
 
@@ -426,8 +433,8 @@ if __name__ == "__main__":
 
     # obj_threshold = 0.7
     # iou_threshold = 0.5
-    obj_threshold = 0.001
-    iou_threshold = 0.5
+    obj_threshold = 0.3
+    iou_threshold = 0.001
 
 
     box_list = []
