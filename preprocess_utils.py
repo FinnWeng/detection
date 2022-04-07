@@ -351,10 +351,13 @@ def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, xmax_tens
         # print("ious:", ious.shape) # (100, config.BOX, 1)
         ious = tf.reshape(ious, [config.box_buffer,config.BOX]) # (100, config.BOX)
 
+        # over this threshold, take all anchors
+        ious_over_threshould = ious > config.take_upper_threshold # (100, config.BOX)
+
         best_anchor,max_iou = batch_best_anchor_box_finder(config, ious) 
         best_anchor_one_hot = tf.one_hot(best_anchor, depth = config.BOX) # (100, config.BOX)
 
-        update_or_not = ious + best_anchor_one_hot # (100, config.BOX)
+        update_or_not = tf.cast(ious_over_threshould, tf.float32) + best_anchor_one_hot # (100, config.BOX)
         update_or_not = tf.clip_by_value(update_or_not, clip_value_min=0, clip_value_max=1) # (100, config.BOX)
 
         update_or_not = update_or_not[:num_of_bbox]

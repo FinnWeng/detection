@@ -66,6 +66,7 @@ def define_config():
 
     anchors = tf.reshape(anchors, [3,3,2])
 
+    
 
 
     config.anchors = anchors
@@ -82,6 +83,8 @@ def define_config():
     config.num_of_labels = 80 # there're missing id in json_data["categories"]
     # config.BOX = int(len(config.anchors)/2)
     config.BOX = anchors.shape[1]
+
+    anchors = anchors*config.IMAGE_H/416 # for image size now 
 
     '''
     0 for index use for traning ( NOT +1 for 0 is for padding ANY more!!!)
@@ -807,9 +810,9 @@ if __name__ == "__main__":
     epoch starts from 1(?)
     '''
 
-    previous_epoch = str(12).zfill(4)
-    checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
-    custom_model.load_weights(checkpoint_path)
+    # previous_epoch = str(12).zfill(4)
+    # checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
+    # custom_model.load_weights(checkpoint_path)
 
     # import pdb
     # pdb.set_trace()
