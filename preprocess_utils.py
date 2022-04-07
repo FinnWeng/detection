@@ -18,14 +18,18 @@ def tf_load_image(config, id_tensor, height_tensor, width_tensor, class_tensor,x
 
 
 def tf_resize_image(img, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
+    
 
     img = tf.image.resize(img, [224,224]) # will be float32
     xmax_tensor = xmax_tensor/tf.cast(width_tensor,tf.float32)*224
     xmin_tensor = xmin_tensor/tf.cast(width_tensor,tf.float32)*224
     ymax_tensor = ymax_tensor/tf.cast(height_tensor,tf.float32)*224
     ymin_tensor = ymin_tensor/tf.cast(height_tensor,tf.float32)*224
+
+    width_tensor = tf.cast(width_tensor,tf.int32)
+    height_tensor = tf.cast(height_tensor,tf.int32)
     
-    return  img,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor, class_tensor
+    return  img, height_tensor, width_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor, class_tensor
 
 
 def tf_crop_and_resize_image(img, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
@@ -224,8 +228,26 @@ def batch_best_anchor_box_finder(config, ious):
 
 
 
+@tf.function
+def tf_bbox_iou(boxes1, boxes2):
 
 
+    boxes1_area = boxes1[..., 2] * boxes1[..., 3]
+    boxes2_area = boxes2[..., 2] * boxes2[..., 3]
+
+    boxes1 = tf.concat([boxes1[..., :2] - boxes1[..., 2:] * 0.5,
+                            boxes1[..., :2] + boxes1[..., 2:] * 0.5], axis=-1) # x min, ymin, x max, y max
+    boxes2 = tf.concat([boxes2[..., :2] - boxes2[..., 2:] * 0.5,
+                            boxes2[..., :2] + boxes2[..., 2:] * 0.5], axis=-1)
+
+    left_up = tf.math.maximum(boxes1[..., :2], boxes2[..., :2])
+    right_down = tf.math.minimum(boxes1[..., 2:], boxes2[..., 2:])
+
+    inter_section = tf.math.maximum(right_down - left_up, 0.0)
+    inter_area = inter_section[..., 0] * inter_section[..., 1]
+    union_area = boxes1_area + boxes2_area - inter_area
+
+    return inter_area / (union_area + 1e-10)
 
 
 @tf.function
@@ -323,7 +345,9 @@ def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, xmax_tens
         index_shape = (num_of_box, 2)
         '''
 
-        ious = batch_bbox_iou(bbox_xywh_scaled,anchors_xywh)
+        # ious = batch_bbox_iou(bbox_xywh_scaled,anchors_xywh)
+
+        ious = tf_bbox_iou(bbox_xywh_scaled,anchors_xywh)
         # print("ious:", ious.shape) # (100, config.BOX, 1)
         ious = tf.reshape(ious, [config.box_buffer,config.BOX]) # (100, config.BOX)
 

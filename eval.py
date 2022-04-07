@@ -422,7 +422,7 @@ if __name__ == "__main__":
     custom_model = Custom_Model(inputs = [model_input],outputs = bbox_tensors, config = config)
 
 
-    previous_epoch = str(90).zfill(4)
+    previous_epoch = str(99).zfill(4)
     checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
     custom_model.load_weights(checkpoint_path)
 
@@ -434,7 +434,7 @@ if __name__ == "__main__":
     # obj_threshold = 0.7
     # iou_threshold = 0.5
     obj_threshold = 0.3
-    iou_threshold = 0.001
+    iou_threshold = 0.5
 
 
     box_list = []
