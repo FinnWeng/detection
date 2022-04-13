@@ -259,7 +259,8 @@ def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, xmax_tens
     
     # b_batch = tf.zeros((1,  1, 1, config.box_buffer)) # desired network output
 
-    print("xmax_tensor:",xmax_tensor.shape)
+    # print("xmax_tensor:",xmax_tensor.shape) #  (100,)
+    # print("class_tensor:",class_tensor.shape, class_tensor) #  (100,)
     
 
     num_of_bbox = tf.reduce_sum(tf.cast(class_tensor != 0, tf.int32))
@@ -285,6 +286,8 @@ def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, xmax_tens
     # box = [center_x, center_y, center_w, center_h]
     boxes = tf.stack([center_x, center_y, center_w, center_h], axis = 1) # 100,4 
 
+    # print("boxes:",boxes)
+
 
     for box_size_idx in range(3):
 
@@ -309,6 +312,8 @@ def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, xmax_tens
 
         grid_x = tf.cast(tf.math.floor(center_x),tf.int32) # (100,)
         grid_y = tf.cast(tf.math.floor(center_y),tf.int32) # (100,)
+
+     
         anchors_xy = tf.cast(tf.stack([grid_x, grid_y],axis = 1),tf.float32) + 0.5 # 100, 2
         anchors_xy = tf.stack([anchors_xy]*config.BOX,axis = 1) # 100, 3, 2
         anchors_xywh = tf.concat([anchors_xy, anchors],axis = 2) # 100,3,4 
@@ -382,6 +387,12 @@ def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, xmax_tens
 
         # max_iou = max_iou[:num_of_bbox]
 
+
+        '''
+
+        y_batch:
+        center_x, center_y, center_w, center_h, this is box or not(update_index_indicator).  The center_x and cener_y are not scaled.
+        '''
 
 
         y_batch = tf.tensor_scatter_nd_update(y_batch, update_index, updates)

@@ -86,6 +86,10 @@ def define_config():
     # config.BOX = int(len(config.anchors)/2)
     config.BOX = anchors.shape[1]
 
+    anchors = anchors*config.IMAGE_H/416 # for image size now 
+
+    config.anchors = anchors
+
     '''
     0 for index use for traning ( NOT +1 for 0 is for padding ANY more!!!)
     2 for ture label
@@ -264,6 +268,8 @@ def save_result(anno_by_image_id_list, config, obj_threshold, iou_threshold,resu
     for idx, anno in enumerate(anno_by_image_id_list):
         this_img_info = anno[0]
         this_id = this_img_info["id"]
+
+        # print("this_img_info:", this_img_info)
         this_img_height = this_img_info["height"]
         this_img_width = this_img_info["width"]
         
@@ -272,6 +278,8 @@ def save_result(anno_by_image_id_list, config, obj_threshold, iou_threshold,resu
 
         img = cv2.imread(this_img_path)  
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        # print("this_img_height:",this_img_height, "this_img_width:", this_img_width)
         
 
 
@@ -286,6 +294,8 @@ def save_result(anno_by_image_id_list, config, obj_threshold, iou_threshold,resu
 
 
         x_batch = np.expand_dims(x_batch.astype(np.float32)/255, axis = 0)
+
+        # print("img.shape[0:2]",img.shape[0:2])
 
 
         '''
@@ -304,6 +314,7 @@ def save_result(anno_by_image_id_list, config, obj_threshold, iou_threshold,resu
 
             one_original_image_size = np.array(list(img.shape[0:2]))
 
+            # print("one_original_image_size.tolist():",one_original_image_size.tolist())
             bboxes = postprocess_boxes(one_pred_bbox, one_original_image_size.tolist(), input_size, obj_threshold)
             bboxes = nms(bboxes, iou_threshold, method='nms')
 
@@ -330,16 +341,17 @@ def save_result(anno_by_image_id_list, config, obj_threshold, iou_threshold,resu
                 c1, c2 = (coor[0], coor[1]), (coor[2], coor[3]), left up and right down, origin is left up.
                 cv2.rectangle(image, c1, c2, bbox_color, bbox_thick)
                 '''
-                coor = np.array(box[:4], dtype=np.int32).tolist()
-                bbox = [coor[0], coor[1],  coor[2] - coor[0], coor[3] - coor[1]]
+                # coor = np.array(box[:4], dtype=np.int32).tolist()
+                coor = np.array(box[:4], dtype=np.float32).tolist()
+                bbox = [coor[0], coor[1],  coor[2] - coor[0], coor[3] - coor[1]] # xmin, ymin, w, h
 
                 category_id = int(box[5])
                 category_id = config.cls_label[category_id][2]
 
                 one_box_score = box[4].tolist()
 
-
-                one_box = {"image_id":this_id,"category_id":category_id,"bbox":bbox,"score":one_box_score} # the label needs +1 to become coco label
+                # print("bbox:",bbox)
+                one_box = {"image_id":this_id,"category_id":category_id,"bbox":bbox,"score":one_box_score} 
                 # import pdb
                 # pdb.set_trace()
                 box_list.append(copy.deepcopy(one_box))
@@ -422,7 +434,7 @@ if __name__ == "__main__":
     custom_model = Custom_Model(inputs = [model_input],outputs = bbox_tensors, config = config)
 
 
-    previous_epoch = str(99).zfill(4)
+    previous_epoch = str(5).zfill(4)
     checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
     custom_model.load_weights(checkpoint_path)
 

@@ -43,7 +43,7 @@ def define_config():
     # config.shuffle_buffer = 1000
     config.shuffle_buffer = 100
     config.batch_size = 32
-    config.base_lr = 1e-4
+    config.base_lr = 1e-3
     config.warmup_steps = 3000
     config.epochs = 100
     config.log_dir = "./tf_log/"
@@ -69,7 +69,7 @@ def define_config():
     
 
 
-    config.anchors = anchors
+    
 
     anchor_zeros = tf.zeros(anchors.shape)
     config.zero_and_anchors = tf.concat([anchor_zeros, anchors], axis = -1) # [3,3,4]
@@ -85,6 +85,8 @@ def define_config():
     config.BOX = anchors.shape[1]
 
     anchors = anchors*config.IMAGE_H/416 # for image size now 
+
+    config.anchors = anchors
 
     '''
     0 for index use for traning ( NOT +1 for 0 is for padding ANY more!!!)
@@ -380,6 +382,7 @@ def make_data_list_for_kmeans(anno_by_image_id_lis):
 
 
         this_data["id"] = this_img_info["id"]
+        print(this_img_info)
         this_data["height"] = this_img_info["height"]
         this_data["width"] = this_img_info["width"]
 
@@ -545,6 +548,11 @@ class Custom_Model(tf.keras.Model):
         x, y = data
         x_batch = x["x"]
         # y_batch, b_batch = y["y"], y["true_boxes"]
+        '''
+        For each of small_y, middle_y, large_y
+        y_batch:
+        center_x, center_y, center_w, center_h, this is box or not(update_index_indicator)
+        '''
         y_batch, b_batch = [y["small_y"], y["middle_y"],y["large_y"]], [y["small_true_boxes"], y["middle_true_boxes"],y["large_true_boxes"]]
 
         with tf.GradientTape() as tape:
@@ -554,7 +562,7 @@ class Custom_Model(tf.keras.Model):
             # Compute the loss valuese
             # (the loss function is configured in `compile()`)
             # loss = self.loss_fn(self.config, y_batch,b_batch, y_pred)
-            loss, giou_loss, conf_loss,  prob_loss = self.loss_fn(self.config, y_batch,b_batch, y_pred)
+            loss, giou_loss, conf_loss,  prob_loss, coord_loss = self.loss_fn(self.config, y_batch,b_batch, y_pred)
 
 
         # Compute gradients
@@ -567,7 +575,7 @@ class Custom_Model(tf.keras.Model):
         # self.compiled_metrics.update_state(y, y_pred)
 
         # Return a dict mapping metric names to current value
-        result = {"loss":loss, "giou_loss":giou_loss, "conf_loss":conf_loss,  "prob_loss":prob_loss}
+        result = {"loss":loss, "giou_loss":giou_loss, "conf_loss":conf_loss,  "prob_loss":prob_loss, "coord_loss":coord_loss}
         return result
 
 
@@ -810,9 +818,9 @@ if __name__ == "__main__":
     epoch starts from 1(?)
     '''
 
-    # previous_epoch = str(12).zfill(4)
-    # checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
-    # custom_model.load_weights(checkpoint_path)
+    previous_epoch = str(65).zfill(4)
+    checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
+    custom_model.load_weights(checkpoint_path)
 
     # import pdb
     # pdb.set_trace()
