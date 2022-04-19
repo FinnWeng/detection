@@ -308,7 +308,7 @@ def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, xmax_tens
 
 
         anchors = config.anchors[box_size_idx] # 3,2
-        anchors = tf.stack([anchors]*config.box_buffer, 0) # 100,3,2  
+        anchors = tf.stack([anchors]*config.box_buffer, 0) # 100,3,2  # anchors vs scaled xywh
 
         grid_x = tf.cast(tf.math.floor(center_x),tf.int32) # (100,)
         grid_y = tf.cast(tf.math.floor(center_y),tf.int32) # (100,)

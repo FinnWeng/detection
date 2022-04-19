@@ -21,7 +21,10 @@ from kmeans_utils import kmeans, get_best_bbox_setting
 from encode_decode_tfrecord import pretrain_tfrecord_generation, _parse_function, deserialized
 from preprocess_utils import  tf_load_image, tf_resize_image, tf_crop_and_resize_image, batch_data_preprocess_v3
 from utils import plot_image_with_grid_cell_partition, plot_grid, OutputRescaler, find_high_class_probability_bbox, nonmax_suppression, draw_boxes
-from loss_utils import get_cell_grid, custom_loss, yolov3_custom_loss
+# from loss_utils import get_cell_grid, custom_loss, yolov3_custom_loss
+from loss_utils import yolov3_custom_loss
+
+
 
 import model_config
 
@@ -43,7 +46,7 @@ def define_config():
     # config.shuffle_buffer = 1000
     config.shuffle_buffer = 100
     config.batch_size = 32
-    config.base_lr = 1e-3
+    config.base_lr = 1e-4
     config.warmup_steps = 3000
     config.epochs = 100
     config.log_dir = "./tf_log/"
@@ -99,14 +102,7 @@ def define_config():
 
     config.take_upper_threshold = 0.3
 
-    bbox_grid_list = []
-    for box_size_idx in range(3):
-        this_resize_scale = 2**(3+box_size_idx)
-        bbox_grid = get_cell_grid(config.IMAGE_W//this_resize_scale,config.IMAGE_H//this_resize_scale,config.batch_size,config.BOX)
-        bbox_grid_list.append(bbox_grid)
 
-
-    config.cell_grid = bbox_grid_list
 
     config.LAMBDA_NO_OBJECT = 1.0
     config.LAMBDA_OBJECT    = 5.0
@@ -775,7 +771,7 @@ if __name__ == "__main__":
     define loss
     '''
 
-    wrapped_loss = Wrapping_Loss(config, custom_loss)
+    # wrapped_loss = Wrapping_Loss(config, custom_loss)
 
     '''
     define model
@@ -799,8 +795,8 @@ if __name__ == "__main__":
 
     steps_per_epoch = 118287//config.batch_size
     # lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = config.warmup_steps, cos_decay_steps = steps_per_epoch*config.epochs)
-    lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = steps_per_epoch*3, cos_decay_steps = steps_per_epoch*config.epochs)
-    # lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = 1, cos_decay_steps = steps_per_epoch*config.epochs)
+    # lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = steps_per_epoch*3, cos_decay_steps = steps_per_epoch*config.epochs)
+    lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = 1, cos_decay_steps = steps_per_epoch*config.epochs)
 
 
 

@@ -20,7 +20,7 @@ from encode_decode_tfrecord import pretrain_tfrecord_generation, _parse_function
 from preprocess_utils import  tf_load_image, tf_resize_image, tf_crop_and_resize_image, batch_data_preprocess_v3
 from utils import plot_image_with_grid_cell_partition, plot_grid, OutputRescaler, find_high_class_probability_bbox,\
     nonmax_suppression, draw_boxes, postprocess_boxes, nms, draw_bbox
-from loss_utils import get_cell_grid, custom_loss, yolov3_custom_loss, decode
+from loss_utils import  yolov3_custom_loss, decode
 
 from net.detection import Detection_Net, YOLOV3_Net, Swin_Encoder, Swin_YOLOV3_Net
 
@@ -101,14 +101,6 @@ def define_config():
 
     config.take_upper_threshold = 0.3
 
-    bbox_grid_list = []
-    for box_size_idx in range(3):
-        this_resize_scale = 2**(3+box_size_idx)
-        bbox_grid = get_cell_grid(config.IMAGE_W//this_resize_scale,config.IMAGE_H//this_resize_scale,config.batch_size,config.BOX)
-        bbox_grid_list.append(bbox_grid)
-
-
-    config.cell_grid = bbox_grid_list
 
     config.LAMBDA_NO_OBJECT = 1.0
     config.LAMBDA_OBJECT    = 5.0
@@ -302,61 +294,61 @@ def save_result(anno_by_image_id_list, config, obj_threshold, iou_threshold,resu
         inference
         '''
 
-        pred_bbox = custom_model.predict(x_batch) # 3, (32, 28, 28, 3, 85) 
+        # print("x_batch") # (1,224,224,3)
 
-        for i in range(len(pred_bbox[0])):
+        pred_bbox = custom_model.predict(x_batch) # 3, (1, 28, 28, 3, 85) 
+
+        for i in range(len(pred_bbox[0])): # batch, which is 1
+            # print("pred_bbox[i]:",pred_bbox[i].shape)
             one_conv_small_bbox, one_conv_middle_bbox, one_conv_large_bbox = pred_bbox[0][i], pred_bbox[1][i], pred_bbox[2][i]
+
             one_pred_bbox = [one_conv_small_bbox, one_conv_middle_bbox, one_conv_large_bbox]
 
             one_pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in one_pred_bbox]
-            one_pred_bbox = tf.concat(one_pred_bbox, axis=0).numpy()
+            one_pred_bbox = tf.concat(one_pred_bbox, axis=0).numpy() # (3087, 85)
 
 
             one_original_image_size = np.array(list(img.shape[0:2]))
 
             # print("one_original_image_size.tolist():",one_original_image_size.tolist())
-            bboxes = postprocess_boxes(one_pred_bbox, one_original_image_size.tolist(), input_size, obj_threshold)
-            bboxes = nms(bboxes, iou_threshold, method='nms')
+            bboxes = postprocess_boxes(one_pred_bbox, one_original_image_size.tolist(), input_size, obj_threshold) # (n, 6)
+            bboxes = nms(bboxes, iou_threshold, method='nms') # m*(6)
 
 
 
-            img = draw_bbox(img, bboxes, config.cls_label)
+            img = draw_bbox(img, bboxes, config.cls_label) # xmin, ymin, xmax, ymax
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             cv2.imwrite("./result/model_output_result_{}.png".format(idx),img)
 
-        # import pdb
-        # pdb.set_trace()
-
-        if len(bboxes) > 0:
-
-                    
 
 
-        
-            for box in bboxes:
-                '''
-                coor = np.array(bbox[:4], dtype=np.int32)
-                score = bbox[4]
-                class_ind = int(bbox[5])
-                c1, c2 = (coor[0], coor[1]), (coor[2], coor[3]), left up and right down, origin is left up.
-                cv2.rectangle(image, c1, c2, bbox_color, bbox_thick)
-                '''
-                # coor = np.array(box[:4], dtype=np.int32).tolist()
-                coor = np.array(box[:4], dtype=np.float32).tolist()
-                bbox = [coor[0], coor[1],  coor[2] - coor[0], coor[3] - coor[1]] # xmin, ymin, w, h
 
-                category_id = int(box[5])
-                category_id = config.cls_label[category_id][2]
+            if len(bboxes) > 0:
 
-                one_box_score = box[4].tolist()
+                for box in bboxes:
+                    '''
+                    coor = np.array(bbox[:4], dtype=np.int32)
+                    score = bbox[4]
+                    class_ind = int(bbox[5])
+                    c1, c2 = (coor[0], coor[1]), (coor[2], coor[3]), left up and right down, origin is left up.
+                    cv2.rectangle(image, c1, c2, bbox_color, bbox_thick)
+                    '''
+                    # coor = np.array(box[:4], dtype=np.int32).tolist()
+                    coor = np.array(box[:4], dtype=np.float32).tolist()
+                    bbox = [coor[0], coor[1],  coor[2] - coor[0], coor[3] - coor[1]] # xmin, ymin, w, h
 
-                # print("bbox:",bbox)
-                one_box = {"image_id":this_id,"category_id":category_id,"bbox":bbox,"score":one_box_score} 
-                # import pdb
-                # pdb.set_trace()
-                box_list.append(copy.deepcopy(one_box))
+                    category_id = int(box[5])
+                    category_id = config.cls_label[category_id][2]
 
-                # print("one_box;", one_box)
+                    one_box_score = box[4].tolist()
+
+                    # print("bbox:",bbox)
+                    one_box = {"image_id":this_id,"category_id":category_id,"bbox":bbox,"score":one_box_score} 
+                    # import pdb
+                    # pdb.set_trace()
+                    box_list.append(copy.deepcopy(one_box))
+
+                    # print("one_box;", one_box)
 
 
         # print("final_boxes:",final_boxes)
@@ -369,7 +361,7 @@ def save_result(anno_by_image_id_list, config, obj_threshold, iou_threshold,resu
     # import pdb
     # pdb.set_trace()
 
-
+    box_list = sorted(box_list, key = lambda d: d["image_id"])
 
     with open(result_path, 'w') as outfile:
         json.dump(box_list, outfile)
@@ -434,7 +426,7 @@ if __name__ == "__main__":
     custom_model = Custom_Model(inputs = [model_input],outputs = bbox_tensors, config = config)
 
 
-    previous_epoch = str(5).zfill(4)
+    previous_epoch = str(99).zfill(4)
     checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
     custom_model.load_weights(checkpoint_path)
 
@@ -445,7 +437,7 @@ if __name__ == "__main__":
 
     # obj_threshold = 0.7
     # iou_threshold = 0.5
-    obj_threshold = 0.3
+    obj_threshold = 0.01
     iou_threshold = 0.5
 
 
