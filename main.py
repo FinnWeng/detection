@@ -19,7 +19,7 @@ from keras.utils import io_utils
 
 from kmeans_utils import kmeans, get_best_bbox_setting
 from encode_decode_tfrecord import pretrain_tfrecord_generation, _parse_function, deserialized
-from preprocess_utils import  tf_load_image, tf_resize_image, tf_crop_and_resize_image, batch_data_preprocess_v3
+from preprocess_utils import  tf_load_image, tf_resize_image, tf_crop_and_resize_image, batch_data_preprocess_v3, random_flip,image_only_aug
 from utils import plot_image_with_grid_cell_partition, plot_grid, OutputRescaler, find_high_class_probability_bbox, nonmax_suppression, draw_boxes
 # from loss_utils import get_cell_grid, custom_loss, yolov3_custom_loss
 from loss_utils import yolov3_custom_loss
@@ -721,6 +721,8 @@ if __name__ == "__main__":
     ds_train = ds_train.map(partial_tf_load_image, 10)
     # ds_train = ds_train.map(tf_resize_image, tf.data.experimental.AUTOTUNE)
     ds_train = ds_train.map(tf_crop_and_resize_image, 10)
+    ds_train = ds_train.map(random_flip, 10)
+    ds_train = ds_train.map(image_only_aug,10)
 
     '''
     index one by one
@@ -814,7 +816,7 @@ if __name__ == "__main__":
     epoch starts from 1(?)
     '''
 
-    previous_epoch = str(65).zfill(4)
+    previous_epoch = str(99).zfill(4)
     checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
     custom_model.load_weights(checkpoint_path)
 

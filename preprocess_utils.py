@@ -29,7 +29,7 @@ def tf_resize_image(img, height_tensor, width_tensor, class_tensor,xmax_tensor,x
     width_tensor = tf.cast(width_tensor,tf.int32)
     height_tensor = tf.cast(height_tensor,tf.int32)
     
-    return  img, height_tensor, width_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor, class_tensor
+    return  img, height_tensor, width_tensor, class_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor
 
 
 def tf_crop_and_resize_image(img, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
@@ -77,7 +77,70 @@ def tf_crop_and_resize_image(img, height_tensor, width_tensor, class_tensor,xmax
     ymax_tensor = (ymax_tensor - tf.cast(start_y,tf.float32))/tf.cast(new_height,tf.float32)*224
     ymin_tensor = (ymin_tensor - tf.cast(start_y,tf.float32))/tf.cast(new_height,tf.float32)*224
     
-    return img, height_tensor, width_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor, class_tensor
+    return img, height_tensor, width_tensor, class_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor
+
+
+@tf.function
+def do_flip(img, xmax_tensor,xmin_tensor):
+        img =  tf.image.flip_left_right(img)
+
+        xmax_mask = xmax_tensor>0
+        xmin_mask = xmin_tensor>0
+
+        have_bbox_mask = tf.math.logical_or(xmax_mask, xmin_mask)
+        have_bbox_mask = tf.cast(have_bbox_mask, tf.float32)
+
+        aug_xmin_tensor = -xmax_tensor + have_bbox_mask* 224.
+        aug_xmax_tensor = -xmin_tensor + have_bbox_mask* 224.
+
+        return img, aug_xmax_tensor, aug_xmin_tensor
+
+@tf.function
+def do_not_flip(img, xmax_tensor,xmin_tensor):
+    return img, xmax_tensor,xmin_tensor
+
+
+@tf.function
+def random_flip(img, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
+
+    do_flip_or_not = tf.random.uniform(shape=[], minval=0, maxval=2, dtype=tf.int32)
+
+    # if do_flip_or_not > 0:
+    #     img =  tf.image.flip_left_right(img)
+
+    #     xmax_mask = xmax_tensor>0
+    #     xmin_mask = xmin_tensor>0
+
+    #     have_bbox_mask = tf.math.logical_or(xmax_mask, xmin_mask)
+    #     have_bbox_mask = tf.cast(have_bbox_mask, tf.float32)
+
+    #     aug_xmin_tensor = -xmax_tensor + have_bbox_mask* 224.
+    #     aug_xmax_tensor = -xmin_tensor + have_bbox_mask* 224.
+    # else:
+    #     aug_xmin_tensor = xmax_tensor
+
+    #     aug_xmax_tensor = xmin_tensor
+    
+    img, aug_xmax_tensor,aug_xmin_tensor = tf.cond(do_flip_or_not > 0, \
+        lambda: do_flip(img, xmax_tensor,xmin_tensor), \
+            lambda:do_not_flip(img, xmax_tensor,xmin_tensor))
+    
+    return img, height_tensor, width_tensor, class_tensor,aug_xmax_tensor,aug_xmin_tensor,ymax_tensor,ymin_tensor
+
+@tf.function
+def image_only_aug(img, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
+    '''
+    leave bbox intact
+    '''
+    random_brightness = tf.random.uniform(shape=[], minval=0, maxval=0.5, dtype=tf.float32)
+    random_saturation = tf.random.uniform(shape=[], minval=0, maxval=4, dtype=tf.float32)
+
+    img = tf.image.adjust_saturation(img, random_saturation)
+    img = tf.image.adjust_brightness(img, random_brightness)
+    img = tf.image.random_contrast(img, lower=0.1, upper=0.9)
+    img = tf.image.random_jpeg_quality(img, 75, 95)
+
+    return img, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor
 
 
 
@@ -87,29 +150,6 @@ tools for original version and batch version
 '''
 
 
-# @tf.function
-# def rescale_centerxy(config, xmax, xmin, ymax, ymin):
-#     '''
-#     obj:     dictionary containing xmin, xmax, ymin, ymax
-#     config : dictionary containing IMAGE_W, GRID_W, IMAGE_H and GRID_H
-#     '''
-#     center_x = .5*(xmin + xmax)
-#     center_x = center_x / (float(config.IMAGE_W) / config.GRID_W) # center_x/32
-#     center_y = .5*(ymin + ymax)
-#     center_y = center_y / (float(config.IMAGE_H) / config.GRID_H)
-#     return(center_x,center_y)
-
-# @tf.function
-# def rescale_cebterwh(config, xmax, xmin, ymax, ymin):
-#     '''
-#     obj:     dictionary containing xmin, xmax, ymin, ymax
-#     config : dictionary containing IMAGE_W, GRID_W, IMAGE_H and GRID_H
-#     '''    
-#     # unit: grid cell
-#     center_w = (xmax - xmin) / (float(config.IMAGE_W) / config.GRID_W) 
-#     # unit: grid cell
-#     center_h = (ymax - ymin) / (float(config.IMAGE_H) / config.GRID_H) 
-#     return(center_w,center_h)
 
 
 @tf.function
@@ -251,7 +291,7 @@ def tf_bbox_iou(boxes1, boxes2):
 
 
 @tf.function
-def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor, class_tensor):
+def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, class_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
     # x_batch = np.zeros((config.batch_size, config.IMAGE_H, config.IMAGE_W, 3))  # input images
     # b_batch = np.zeros((config.batch_size, 1     , 1     , 1    ,  config.box_buffer, 4))   # list of self.config['TRUE_self.config['BOX']_BUFFER'] GT boxes
     # y_batch = np.zeros((config.batch_size, config.GRID_H,  config.GRID_W, config.BOX, 4+1+config.num_of_labels)) # desired network output
@@ -259,7 +299,7 @@ def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, xmax_tens
     
     # b_batch = tf.zeros((1,  1, 1, config.box_buffer)) # desired network output
 
-    # print("xmax_tensor:",xmax_tensor.shape) #  (100,)
+    # print("xmax_tensor:",xmax_tensor.shape) #  (100,)width_tensor
     # print("class_tensor:",class_tensor.shape, class_tensor) #  (100,)
     
 
