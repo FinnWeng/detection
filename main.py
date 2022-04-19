@@ -47,6 +47,7 @@ def define_config():
     config.shuffle_buffer = 100
     config.batch_size = 32
     config.base_lr = 1e-4
+    config.end_lr = 1e-5
     config.warmup_steps = 3000
     config.epochs = 100
     config.log_dir = "./tf_log/"
@@ -798,7 +799,9 @@ if __name__ == "__main__":
     steps_per_epoch = 118287//config.batch_size
     # lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = config.warmup_steps, cos_decay_steps = steps_per_epoch*config.epochs)
     # lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = steps_per_epoch*3, cos_decay_steps = steps_per_epoch*config.epochs)
-    lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = 1, cos_decay_steps = steps_per_epoch*config.epochs)
+    # lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = 1, cos_decay_steps = steps_per_epoch*config.epochs)
+    lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = 1, \
+        cos_decay_steps = steps_per_epoch*config.epochs, alpha= config.end_lr)
 
 
 
