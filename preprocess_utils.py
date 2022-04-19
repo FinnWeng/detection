@@ -8,16 +8,16 @@ some tf.data image preprocess
 '''
 
 
-def tf_load_image(config, id_tensor, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
+def tf_load_image(config, id_tensor, height_tensor, width_tensor, bbox_amount_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
     # id_tensor, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor = data_input
 
     img = tf.io.read_file(id_tensor)
     img = tf.io.decode_jpeg(img, channels=3)
 
-    return img, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor
+    return img, height_tensor, width_tensor, bbox_amount_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor
 
 
-def tf_resize_image(img, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
+def tf_resize_image(img, height_tensor, width_tensor, bbox_amount_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
     
 
     img = tf.image.resize(img, [224,224]) # will be float32
@@ -32,7 +32,7 @@ def tf_resize_image(img, height_tensor, width_tensor, class_tensor,xmax_tensor,x
     return  img, height_tensor, width_tensor, class_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor
 
 
-def tf_crop_and_resize_image(img, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
+def tf_crop_and_resize_image(img, height_tensor, width_tensor, bbox_amount_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
 
     width_tensor = tf.cast(width_tensor,tf.int32)
     height_tensor = tf.cast(height_tensor,tf.int32)
@@ -77,7 +77,7 @@ def tf_crop_and_resize_image(img, height_tensor, width_tensor, class_tensor,xmax
     ymax_tensor = (ymax_tensor - tf.cast(start_y,tf.float32))/tf.cast(new_height,tf.float32)*224
     ymin_tensor = (ymin_tensor - tf.cast(start_y,tf.float32))/tf.cast(new_height,tf.float32)*224
     
-    return img, height_tensor, width_tensor, class_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor
+    return img, height_tensor, width_tensor, bbox_amount_tensor, class_tensor, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor
 
 
 @tf.function
@@ -101,7 +101,7 @@ def do_not_flip(img, xmax_tensor,xmin_tensor):
 
 
 @tf.function
-def random_flip(img, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
+def random_flip(img, height_tensor, width_tensor, bbox_amount_tensor, class_tensor, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor):
 
     do_flip_or_not = tf.random.uniform(shape=[], minval=0, maxval=2, dtype=tf.int32)
 
@@ -125,10 +125,10 @@ def random_flip(img, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_
         lambda: do_flip(img, xmax_tensor,xmin_tensor), \
             lambda:do_not_flip(img, xmax_tensor,xmin_tensor))
     
-    return img, height_tensor, width_tensor, class_tensor,aug_xmax_tensor,aug_xmin_tensor,ymax_tensor,ymin_tensor
+    return img, height_tensor, width_tensor, bbox_amount_tensor, class_tensor,aug_xmax_tensor,aug_xmin_tensor,ymax_tensor,ymin_tensor
 
 @tf.function
-def image_only_aug(img, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
+def image_only_aug(img, height_tensor, width_tensor, bbox_amount_tensor, class_tensor, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor):
     '''
     leave bbox intact
     '''
@@ -140,7 +140,7 @@ def image_only_aug(img, height_tensor, width_tensor, class_tensor,xmax_tensor,xm
     img = tf.image.random_contrast(img, lower=0.1, upper=0.9)
     img = tf.image.random_jpeg_quality(img, 75, 95)
 
-    return img, height_tensor, width_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor
+    return img, height_tensor, width_tensor, bbox_amount_tensor, class_tensor, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor
 
 
 
@@ -290,8 +290,8 @@ def tf_bbox_iou(boxes1, boxes2):
     return inter_area / (union_area + 1e-10)
 
 
-@tf.function
-def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, class_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
+# @tf.function
+def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, bbox_amount_tensor, class_tensor, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor):
     # x_batch = np.zeros((config.batch_size, config.IMAGE_H, config.IMAGE_W, 3))  # input images
     # b_batch = np.zeros((config.batch_size, 1     , 1     , 1    ,  config.box_buffer, 4))   # list of self.config['TRUE_self.config['BOX']_BUFFER'] GT boxes
     # y_batch = np.zeros((config.batch_size, config.GRID_H,  config.GRID_W, config.BOX, 4+1+config.num_of_labels)) # desired network output
@@ -303,7 +303,8 @@ def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, class_ten
     # print("class_tensor:",class_tensor.shape, class_tensor) #  (100,)
     
 
-    num_of_bbox = tf.reduce_sum(tf.cast(class_tensor != 0, tf.int32))
+    # num_of_bbox = tf.reduce_sum(tf.cast(class_tensor != 0, tf.int32)) # there's a problem that person(0) won't be incluede
+    num_of_bbox = tf.cast(bbox_amount_tensor, tf.int32) # shape = ()
 
     '''
     deal with small bbox, then middle bbox, then large bbox.

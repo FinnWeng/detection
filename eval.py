@@ -426,7 +426,7 @@ if __name__ == "__main__":
     custom_model = Custom_Model(inputs = [model_input],outputs = bbox_tensors, config = config)
 
 
-    previous_epoch = str(99).zfill(4)
+    previous_epoch = str(1).zfill(4)
     checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
     custom_model.load_weights(checkpoint_path)
 

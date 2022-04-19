@@ -352,7 +352,7 @@ def get_anno_by_image_id_list(json_data):
     return anno_by_image_id_list
 
 
-def make_data_list_for_kmeans(anno_by_image_id_lis):
+def make_data_list_for_kmeans(anno_by_image_id_list):
 
     '''
     post process for make data we want
@@ -428,10 +428,13 @@ def make_data_list_for_tfrecord(anno_by_image_id_list, config):
             xmin_base[idx] = this_bbox[0]
             ymax_base[idx] = this_bbox[1] + this_bbox[3]
             ymin_base[idx] = this_bbox[1]
+        
+
 
         this_data["id"] = this_img_info["id"]
         this_data["height"] = this_img_info["height"]
         this_data["width"] = this_img_info["width"]
+        this_data["bbox_amount"] = len(this_bboxs)
 
         this_data["class"] = class_base
         this_data["xmax"] = xmax_base
@@ -446,13 +449,16 @@ def make_data_list_for_tfrecord(anno_by_image_id_list, config):
     id_array = data_df["id"].to_numpy()
     height_array = data_df["height"].to_numpy()
     width_array = data_df["width"].to_numpy()
+    bbox_amount_array = data_df["bbox_amount"].to_numpy()
+
+
     class_array = np.stack(data_df["class"].to_numpy())
     xmax_array = np.stack(data_df["xmax"].to_numpy())
     xmin_array = np.stack(data_df["xmin"].to_numpy())
     ymax_array = np.stack(data_df["ymax"].to_numpy())
     ymin_array = np.stack(data_df["ymin"].to_numpy())
     
-    return id_array, height_array,width_array,class_array,xmax_array,xmin_array,ymax_array,ymin_array
+    return id_array, height_array,width_array,bbox_amount_array, class_array,xmax_array,xmin_array,ymax_array,ymin_array
 
 
 def make_tfrecord(annotation_path):
@@ -482,11 +488,11 @@ def make_tfrecord(annotation_path):
     
     '''
 
-    id_array, height_array,width_array,class_array,xmax_array,xmin_array,ymax_array,ymin_array = make_data_list_for_tfrecord(anno_by_image_id_list,config)
+    id_array, height_array,width_array,bbox_amount_array, class_array,xmax_array,xmin_array,ymax_array,ymin_array = make_data_list_for_tfrecord(anno_by_image_id_list,config)
     print("id_array.shape:", id_array.shape)
     print("xmax_array.shape:",xmax_array.shape)
 
-    pretrain_tfrecord_generation(config.tfr_fname, id_array, height_array,width_array,class_array,xmax_array,xmin_array,ymax_array,ymin_array)
+    pretrain_tfrecord_generation(config.tfr_fname, id_array, height_array,width_array,bbox_amount_array, class_array,xmax_array,xmin_array,ymax_array,ymin_array)
 
 def get_proper_anchors_by_kmeans(annotation_path):
     json_data = get_json_data(annotation_path)
@@ -819,7 +825,7 @@ if __name__ == "__main__":
     epoch starts from 1(?)
     '''
 
-    previous_epoch = str(99).zfill(4)
+    previous_epoch = str(1).zfill(4)
     checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
     custom_model.load_weights(checkpoint_path)
 
