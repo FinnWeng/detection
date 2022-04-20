@@ -29,8 +29,7 @@ def tf_resize_image(img, height_tensor, width_tensor, bbox_amount_tensor, class_
     width_tensor = tf.cast(width_tensor,tf.int32)
     height_tensor = tf.cast(height_tensor,tf.int32)
     
-    return  img, height_tensor, width_tensor, class_tensor, xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor
-
+    return  img, height_tensor, width_tensor, bbox_amount_tensor, class_tensor, xmax_tensor, xmin_tensor, ymax_tensor, ymin_tensor
 
 def tf_crop_and_resize_image(img, height_tensor, width_tensor, bbox_amount_tensor, class_tensor,xmax_tensor,xmin_tensor,ymax_tensor,ymin_tensor):
 
@@ -90,8 +89,11 @@ def do_flip(img, xmax_tensor,xmin_tensor):
         have_bbox_mask = tf.math.logical_or(xmax_mask, xmin_mask)
         have_bbox_mask = tf.cast(have_bbox_mask, tf.float32)
 
-        aug_xmin_tensor = -xmax_tensor + have_bbox_mask* 224.
-        aug_xmax_tensor = -xmin_tensor + have_bbox_mask* 224.
+        # aug_xmin_tensor = -xmax_tensor + have_bbox_mask* 224.
+        # aug_xmax_tensor = -xmin_tensor + have_bbox_mask* 224.
+
+        aug_xmin_tensor = xmax_tensor + have_bbox_mask*(-2*xmax_tensor + 224.)
+        aug_xmax_tensor = xmin_tensor + have_bbox_mask*(-2*xmin_tensor + 224.)
 
         return img, aug_xmax_tensor, aug_xmin_tensor
 
@@ -303,8 +305,10 @@ def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, bbox_amou
     # print("class_tensor:",class_tensor.shape, class_tensor) #  (100,)
     
 
-    # num_of_bbox = tf.reduce_sum(tf.cast(class_tensor != 0, tf.int32)) # there's a problem that person(0) won't be incluede
+    num_of_bbox = tf.reduce_sum(tf.cast(class_tensor != 0, tf.int32)) # there's a problem that person(0) won't be incluede
+    print("num_of_bbox(wrong):",num_of_bbox)
     num_of_bbox = tf.cast(bbox_amount_tensor, tf.int32) # shape = ()
+    print("num_of_bbox(right):",num_of_bbox)
 
     '''
     deal with small bbox, then middle bbox, then large bbox.
@@ -418,7 +422,7 @@ def batch_data_preprocess_v3(config, img, height_tensor, width_tensor, bbox_amou
         update_value = tf.stack([update_value]*config.BOX, axis = 1) # ([num_of_box, config.BOX, 85])
 
         updates = update_value* update_or_not 
-        # print("updates:",updates.shape)
+        print("updates:",updates[..., :5])
 
 
         update_index = tf.stack([grid_y, grid_x],axis = 1) # the 0,0,0, ... will be those padding. these should be dropped eventaully 

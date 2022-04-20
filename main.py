@@ -47,7 +47,8 @@ def define_config():
     config.shuffle_buffer = 100
     config.batch_size = 32
     config.base_lr = 1e-4
-    config.end_lr = 1e-5
+    # config.end_lr = 1e-5
+    config.end_lr = 0
     config.warmup_steps = 3000
     config.epochs = 100
     config.log_dir = "./tf_log/"
@@ -728,8 +729,8 @@ if __name__ == "__main__":
     ds_train = ds_train.map(partial_tf_load_image, 10)
     # ds_train = ds_train.map(tf_resize_image, tf.data.experimental.AUTOTUNE)
     ds_train = ds_train.map(tf_crop_and_resize_image, 10)
-    ds_train = ds_train.map(random_flip, 10)
-    ds_train = ds_train.map(image_only_aug,10)
+    # ds_train = ds_train.map(random_flip, 10)
+    # ds_train = ds_train.map(image_only_aug,10)
 
     '''
     index one by one
@@ -825,9 +826,9 @@ if __name__ == "__main__":
     epoch starts from 1(?)
     '''
 
-    previous_epoch = str(1).zfill(4)
-    checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
-    custom_model.load_weights(checkpoint_path)
+    # previous_epoch = str(7).zfill(4)
+    # checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
+    # custom_model.load_weights(checkpoint_path)
 
     # import pdb
     # pdb.set_trace()
