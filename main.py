@@ -869,6 +869,8 @@ if __name__ == "__main__":
     '''
     training
     '''
+
+    print(custom_model.summary())
     
     hist = custom_model.fit(ds_train,
             epochs=config.epochs, 

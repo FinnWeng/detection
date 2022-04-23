@@ -399,8 +399,8 @@ swin yolov3
 '''
 
 class Swin_Encoder(tf.keras.Model):
-    def __init__(self,config, model_name='swin_tiny_patch4_window7_224', include_top=False,
-                 img_size=(224, 224), patch_size=(4, 4), in_chans=3, num_classes=1000,
+    def __init__(self,config, model_name='swin_tiny_patch4_window7_224', 
+                 img_size=(224, 224), patch_size=(4, 4), in_chans=3,
                  embed_dim=96, depths=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
@@ -408,9 +408,6 @@ class Swin_Encoder(tf.keras.Model):
                  use_checkpoint=False, **kwargs, ):
         super(Swin_Encoder, self).__init__()
         self.config = config
-        self.include_top = include_top
-
-        self.num_classes = num_classes
         self.num_layers = len(depths)
         self.embed_dim = embed_dim
         self.ape = ape
@@ -460,11 +457,7 @@ class Swin_Encoder(tf.keras.Model):
 
         self.norm = norm_layer(epsilon=1e-5, name='norm')
         self.avgpool = tf.keras.layers.GlobalAveragePooling1D()
-        if self.include_top:
-            self.head =tf.keras.layers.Dense(num_classes, name='head')
-        else:
-            self.head = None
-    
+
     def root_shape(self, tensor):
         tensor = tf.reshape(tensor,[-1,int(tensor.shape[1]**0.5),int(tensor.shape[1]**0.5),tensor.shape[2]])
         return tensor
@@ -478,13 +471,13 @@ class Swin_Encoder(tf.keras.Model):
 
         output_list = []
         for i_layer in range(self.num_layers):
-            print("x.shape:", x.shape)
+            # print("x.shape:", x.shape)
             x = self.basic_layers[i_layer](x)
             if i_layer < self.num_layers - 1:
                 output_list.append(x)
             else:
                 print("skip last!!")
-                print("last x.shape:", x.shape)
+                # print("last x.shape:", x.shape)
 
 
         route_1 = output_list[-3]
