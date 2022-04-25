@@ -498,12 +498,11 @@ class Swin_Encoder(tf.keras.Model):
 
 
 class Swin_YOLOV3_Net(tf.keras.Model):
-    def __init__(self, config, swin_model_config):
+    def __init__(self, config, encoder, decoder):
         super(Swin_YOLOV3_Net, self).__init__()
         self.config = config
-        self.encoder = Swin_Encoder(config, num_classes=config.num_of_labels, \
-            norm_layer=tf.keras.layers.LayerNormalization,**swin_model_config )
-        self.decoder = Decoder_Net(config)
+        self.encoder = encoder
+        self.decoder = decoder
 
         self.reshape1 = tf.keras.layers.Reshape([self.config.GRID_H, self.config.GRID_W, self.config.BOX, 4 + 1 + self.config.num_of_labels])
     

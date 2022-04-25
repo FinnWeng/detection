@@ -29,7 +29,9 @@ from loss_utils import yolov3_custom_loss
 import model_config
 
 # from net.detection import Detection_Net, YOLOV2_Net
-from net.detection import Detection_Net, YOLOV3_Net, Swin_Encoder, Swin_YOLOV3_Net
+from net.detection import Detection_Net, YOLOV3_Net, Swin_Encoder, Swin_YOLOV3_Net, Decoder_Net
+from gradient_accumulating_model import Gradient_Accumulating_Model
+
 
 
 
@@ -45,13 +47,13 @@ def define_config():
     config = AttrDict()
     # config.shuffle_buffer = 1000
     config.shuffle_buffer = 100
-    config.batch_size = 32
+    config.batch_size = 64
     config.base_lr = 1e-4
     # config.end_lr = 1e-5
     config.end_lr = 0
     config.warmup_steps = 3000
     config.epochs = 100
-    config.log_dir = "./tf_log/"
+    config.log_dir = "./great_batch_tf_log/"
     config.model_path = './model/detection.ckpt'
     config.tfr_fname = "./coco_without_img.tfrecord"
     config.box_buffer = 100
@@ -538,15 +540,40 @@ class Wrapping_Loss(tf.keras.losses.Loss):
         loss = self.loss_fn(self.config, y_true, true_boxes, y_pred)
         return loss
 
-class Custom_Model(tf.keras.Model):
-    def __init__(self, config, inputs, outputs):
-        super(Custom_Model, self).__init__(inputs,outputs)
+class Gradient_Accumulating_Custom_Model(tf.keras.Model):
+    def __init__(self, config, inputs, outputs,n_gradients):
+        super( Gradient_Accumulating_Custom_Model, self).__init__(inputs,outputs)
         self.config = config
 
+        self.n_gradients = tf.constant(n_gradients, dtype=tf.int32)
+        self.n_acum_step = tf.Variable(0, dtype=tf.int32, trainable=False)
+        self.gradient_accumulation = [tf.Variable(tf.zeros_like(v, dtype=tf.float32), trainable=False) for v in self.trainable_variables]
+
+
     def compile(self, optimizer, loss_fn):
-        super(Custom_Model, self).compile()
+        super( Gradient_Accumulating_Custom_Model, self).compile()
         self.optimizer = optimizer
         self.loss_fn = loss_fn
+
+
+    def apply_accu_gradients(self):
+        '''
+        For solution of https://stackoverflow.com/questions/66472201/gradient-accumulation-with-custom-model-fit-in-tf-keras,
+        there's a obvious mistake that it simply assign_add the gradients and will make it self.n_gradients times greater(maximum case).
+        So I feel it should be mean of gradients, not sum of gradient.
+        '''
+        for i in range(len(self.gradient_accumulation)):
+            self.gradient_accumulation[i].assign_add(self.gradient_accumulation[i]/tf.cast(self.n_gradients, tf.float32))
+
+        # apply accumulated gradients
+        self.optimizer.apply_gradients(zip(self.gradient_accumulation, self.trainable_variables))
+        print("accumulated Gradient applied!")
+
+        # reset
+        self.n_acum_step.assign(0)
+        for i in range(len(self.gradient_accumulation)):
+            self.gradient_accumulation[i].assign(tf.zeros_like(self.trainable_variables[i], dtype=tf.float32))
+
 
     def train_step(self, data):
         x, y = data
@@ -572,9 +599,15 @@ class Custom_Model(tf.keras.Model):
         # Compute gradients
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
+        for i in range(len(self.gradient_accumulation)):
+            self.gradient_accumulation[i].assign_add(gradients[i])
+
+        # If n_acum_step reach the n_gradients then we apply accumulated gradients to update the variables otherwise do nothing
+        tf.cond(tf.equal(self.n_acum_step, self.n_gradients), self.apply_accu_gradients, lambda: print("accum step:", self.n_acum_step))
+
 
         # Update weights
-        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+        # self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         # Update metrics (includes the metric that tracks the loss)
         # self.compiled_metrics.update_state(y, y_pred)
 
@@ -793,8 +826,9 @@ if __name__ == "__main__":
     swin_encoder = Swin_Encoder(config, \
         norm_layer=tf.keras.layers.LayerNormalization, **swin_model_config)
 
-    detector = Detection_Net(config)
+    detector = Decoder_Net(config)
     
+
     swin_yolov3_net = Swin_YOLOV3_Net(config, swin_encoder, detector)
 
     # build model, expose this to show how to deal with dict as fit() input
@@ -805,9 +839,8 @@ if __name__ == "__main__":
 
     
 
-
-
-    custom_model = Custom_Model(inputs = [model_input],outputs = [y_pred_small_bbox, y_pred_middle_bbox, y_pred_large_bbox], config = config)
+    custom_model =  Gradient_Accumulating_Custom_Model(inputs = [model_input],outputs = [y_pred_small_bbox, y_pred_middle_bbox, y_pred_large_bbox], config = config, n_gradients=8)
+    # custom_model = Custom_Model(inputs = [model_input],outputs = [y_pred_small_bbox, y_pred_middle_bbox, y_pred_large_bbox], config = config)
 
     steps_per_epoch = 118287//config.batch_size
     # lr_schedule = Warmup_Cos_Decay_Schedule(config.base_lr, warmup_steps = config.warmup_steps, cos_decay_steps = steps_per_epoch*config.epochs)
@@ -858,7 +891,7 @@ if __name__ == "__main__":
     #     save_weights_only= True,
     #     verbose=1)
 
-    checkpoint_path = "./model/detection_cp-{epoch:04d}/detection.ckpt"
+    checkpoint_path = "./model/great_batch_detection_cp-{epoch:04d}/detection.ckpt"
     # checkpoint_dir = os.path.dirname(checkpoint_path)
 
     print('len(total_hist["loss"]):',len(total_hist["loss"]))
@@ -878,68 +911,24 @@ if __name__ == "__main__":
     training
     '''
 
+    swin_encoder.load_weights(filepath="./pretrain_weight/swin_encoder.ckpt")
+
     print(custom_model.summary())
+
+    swin_encoder.trainable = False 
+    print("swin_encoder.trainable = False")
     
     hist = custom_model.fit(ds_train,
-            epochs=config.epochs, 
+            epochs=1, 
+            steps_per_epoch=1000).history
+
+    swin_encoder.trainable = True
+    print("swin_encoder.trainable = True")
+
+    hist = custom_model.fit(ds_train,
+            epochs=1, 
             steps_per_epoch=steps_per_epoch,
             # validation_data = ds_val,
             # validation_steps=3,
             callbacks = callback_list).history
 
-
-    # hist = custom_model.fit(ds_train,
-    #         epochs=2, 
-    #         steps_per_epoch=10,
-    #         # validation_data = ds_val,
-    #         # validation_steps=3,
-    #         callbacks = callback_list).history
-
-
-    '''
-    evaluation
-    '''
-    obj_threshold = 0.7
-    iou_threshold = 0.5
-
-    # custom_model.load_weights(config.model_path)
-
-    model_output = custom_model(one_train_data[0]["x"]).numpy()
-
-    true_boxes = one_train_data[1]["true_boxes"]
-
-    for i in range(len(model_output)): 
-    
-        outputRescaler = OutputRescaler(config.anchors)
-        netout_scaled   = outputRescaler.fit(model_output[i])
-
-        boxes = find_high_class_probability_bbox(netout_scaled,obj_threshold)
-
-        if len(boxes) > 0:
-            img = one_train_data[0]["x"][i]
-            img = np.rint(img*255)
-     
-            
-            final_boxes = nonmax_suppression(boxes,iou_threshold=iou_threshold,obj_threshold=obj_threshold)
-            # import pdb
-            # pdb.set_trace()
-            img = draw_boxes(img,final_boxes,config.cls_label,verbose=True)
-
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            cv2.imwrite("model_output_result_{}.png".format(i),img)
-
-    # import pdb
-    # pdb.set_trace()
-
-
-
-
-
-
-
-
-
-
-
-
-    
