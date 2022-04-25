@@ -17,19 +17,34 @@ import pretrain_config as training_config
 import model_config
 
 
+
+
 class Gradient_Accumulating_Model(tf.keras.Model):
+    # def __init__(self, inputs, outputs,n_gradients, metrics_list):
     def __init__(self, inputs, outputs,n_gradients):
+
         super(Gradient_Accumulating_Model, self).__init__(inputs,outputs)
         self.n_gradients = tf.constant(n_gradients, dtype=tf.int32)
         self.n_acum_step = tf.Variable(0, dtype=tf.int32, trainable=False)
         self.gradient_accumulation = [tf.Variable(tf.zeros_like(v, dtype=tf.float32), trainable=False) for v in self.trainable_variables]
+        # self.loss_tracker = metrics_list[0]
+        # self.acc_metric = metrics_list[1]
 
         
-    def compile(self, optimizer, loss_fn, metrics):
-        super(Gradient_Accumulating_Model, self).compile()
-        self.optimizer = optimizer
-        self.loss_fn = loss_fn
-        self.metrics_fn = metrics
+    # def compile(self, optimizer, loss_fn):
+    #     super(Gradient_Accumulating_Model, self).compile()
+    #     self.optimizer = optimizer
+    #     self.loss_fn = loss_fn
+    #     # self.metrics_fn = metrics
+
+    # @property
+    # def metrics(self):
+    #     # We list our `Metric` objects here so that `reset_states()` can be
+    #     # called automatically at the start of each epoch
+    #     # or at the start of `evaluate()`.
+    #     # If you don't implement this property, you have to call
+    #     # `reset_states()` yourself at the time of your choosing.
+    #     return [self.loss_tracker, self.acc_metric]
     
     def apply_accu_gradients(self):
         '''
@@ -63,7 +78,8 @@ class Gradient_Accumulating_Model(tf.keras.Model):
         with tf.GradientTape() as tape:
             y_pred = self(x_batch)  # Forward pass
 
-            loss = self.loss_fn(y_true, y_pred)
+            # loss = self.loss_fn(y_true, y_pred)
+            loss = self.compiled_loss(y_true, y_pred)
 
 
         # Compute and Accumulate batch gradients
@@ -76,11 +92,17 @@ class Gradient_Accumulating_Model(tf.keras.Model):
         tf.cond(tf.equal(self.n_acum_step, self.n_gradients), self.apply_accu_gradients, lambda: print("accum step:", self.n_acum_step))
 
         # Update metrics (includes the metric that tracks the loss)
-        self.metrics_fn.update_state(y_true, y_pred)
+        # self.metrics_fn.update_state(y_true, y_pred)ZZ
 
         # Return a dict mapping metric names to current value
-        result = {"loss":loss, "acc":self.metrics_fn.result()}
-        return result
+        # result = {"loss":loss, "acc":self.metrics_fn.result()}
+        # self.loss_tracker.update_state(loss)
+        # self.acc_metric.update_state(y_true, y_pred)
+        self.compiled_metrics.update_state(y, y_pred, sample_weight=None)
+        # return {"loss": self.loss_tracker.result(), "acc": self.acc_metric.result()}
+        return {m.name: m.result() for m in self.metrics}
+
+
 
 if __name__ == "__main__":
 
@@ -148,8 +170,15 @@ if __name__ == "__main__":
 
     # model = tf.keras.Model(inputs = [model_input],outputs = [prob], name = "ViT_model")
 
+    loss_tracker = tf.keras.metrics.Mean(name="loss")
+    acc_metric =tf.keras.metrics.Accuracy(name="acc")
+
+
     
+    # GA_model = Gradient_Accumulating_Model(inputs = [model_input],outputs = [prob], n_gradients= 1, metrics_list = [loss_tracker,acc_metric])
     GA_model = Gradient_Accumulating_Model(inputs = [model_input],outputs = [prob], n_gradients= 8)
+
+    # GA_model = tf.keras.Model(inputs = [model_input],outputs = [prob], name = "ViT_model")
 
 
     # import pdb
@@ -166,7 +195,8 @@ if __name__ == "__main__":
     log_dir="./pretrain_tf_log/"
     total_steps = 100
     warmup_steps = 5
-    base_lr = 1e-5
+    base_lr = 1e-4
+    # base_lr = 1e-5
 
     # define callback 
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
@@ -182,30 +212,30 @@ if __name__ == "__main__":
     # lr_schedule = Cosine_Decay_with_Warm_up(base_lr, total_steps, warmup_steps)
 
 
+    # GA_model.compile(
+    #     optimizer=tf.keras.optimizers.Adam(learning_rate = base_lr), 
+    #     loss_fn = tf.keras.losses.CategoricalCrossentropy(from_logits=False) # softmax included in model
+    #     )
+
     GA_model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate = base_lr), 
-        loss_fn = tf.keras.losses.CategoricalCrossentropy(from_logits=False), # softmax included in model
-        metrics=tf.keras.metrics.Accuracy(name='accuracy', dtype=None)
-        )
+        loss={"label":tf.keras.losses.CategoricalCrossentropy(from_logits=False)}, # softmax included in model
+        metrics={'label': 'accuracy'})
 
     print(GA_model.summary())
 
     # import pdb
     # pdb.set_trace()
 
+    # swin_encoder.load_weights(filepath="./pretrain_weight/swin_encoder.ckpt")
 
-    # hist = GA_model.fit(ds_train,
-    #             epochs=2000, 
-    #             steps_per_epoch=steps_per_epoch,
-    #             validation_data = ds_val,
-    #             validation_steps=3,callbacks = callback_list).history
-    
     hist = GA_model.fit(ds_train,
-            epochs=1, 
-            steps_per_epoch=1,
-            validation_data = ds_val,
-            validation_steps=3,callbacks = callback_list).history
+                epochs=2000, 
+                steps_per_epoch=steps_per_epoch,
+                validation_data = ds_val,
+                validation_steps=3,callbacks = callback_list).history
     
+
     swin_encoder.save_weights(filepath="./pretrain_weight/swin_encoder.ckpt")
 
 
