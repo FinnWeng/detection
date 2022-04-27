@@ -22,7 +22,7 @@ from utils import plot_image_with_grid_cell_partition, plot_grid, OutputRescaler
     nonmax_suppression, draw_boxes, postprocess_boxes, nms, draw_bbox
 from loss_utils import  yolov3_custom_loss, decode
 
-from net.detection import Detection_Net, YOLOV3_Net, Swin_Encoder, Swin_YOLOV3_Net
+from net.detection import Detection_Net, YOLOV3_Net, Swin_Encoder, Swin_YOLOV3_Net, Decoder_Net
 
 import model_config
 
@@ -403,10 +403,14 @@ if __name__ == "__main__":
 
 
 
-    # detect_net = Detection_Net(config)
-
     swin_model_config = model_config.get_swin_config()
-    swin_yolov3_net = Swin_YOLOV3_Net(config, swin_model_config)
+
+    swin_encoder = Swin_Encoder(config, \
+        norm_layer=tf.keras.layers.LayerNormalization, **swin_model_config)
+
+    detector = Decoder_Net(config)
+    
+    swin_yolov3_net = Swin_YOLOV3_Net(config, swin_encoder, detector)
 
     # build model, expose this to show how to deal with dict as fit() input
     model_input = tf.keras.Input(shape=(224,224,3),name="image",dtype=tf.float32)
@@ -426,7 +430,7 @@ if __name__ == "__main__":
     custom_model = Custom_Model(inputs = [model_input],outputs = bbox_tensors, config = config)
 
 
-    previous_epoch = str(6).zfill(4)
+    previous_epoch = str(20).zfill(4)
     checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
     custom_model.load_weights(checkpoint_path)
 

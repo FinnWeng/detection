@@ -29,7 +29,7 @@ from loss_utils import yolov3_custom_loss
 import model_config
 
 # from net.detection import Detection_Net, YOLOV2_Net
-from net.detection import Detection_Net, YOLOV3_Net, Swin_Encoder, Swin_YOLOV3_Net
+from net.detection import Detection_Net, YOLOV3_Net, Swin_Encoder, Swin_YOLOV3_Net, Decoder_Net
 
 
 
@@ -46,6 +46,7 @@ def define_config():
     # config.shuffle_buffer = 1000
     config.shuffle_buffer = 100
     config.batch_size = 32
+    # config.base_lr = 1e-4
     config.base_lr = 1e-4
     # config.end_lr = 1e-5
     config.end_lr = 0
@@ -729,7 +730,7 @@ if __name__ == "__main__":
     ds_train = ds_train.map(partial_tf_load_image, 10)
     # ds_train = ds_train.map(tf_resize_image, tf.data.experimental.AUTOTUNE)
     ds_train = ds_train.map(tf_crop_and_resize_image, 10)
-    # ds_train = ds_train.map(random_flip, 10)
+    ds_train = ds_train.map(random_flip, 10)
     # ds_train = ds_train.map(image_only_aug,10)
 
     '''
@@ -793,7 +794,7 @@ if __name__ == "__main__":
     swin_encoder = Swin_Encoder(config, \
         norm_layer=tf.keras.layers.LayerNormalization, **swin_model_config)
 
-    detector = Detection_Net(config)
+    detector = Decoder_Net(config)
     
     swin_yolov3_net = Swin_YOLOV3_Net(config, swin_encoder, detector)
 
@@ -833,18 +834,24 @@ if __name__ == "__main__":
     '''
     
 
-
-    # previous_epoch = str(7).zfill(4)
-    # checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
+    '''
+    load pretrain model
+    '''
+    # checkpoint_path = "./model/great_batch_detection_cp-0001/detection.ckpt"
     # custom_model.load_weights(checkpoint_path)
+
+
+    previous_epoch = str(5).zfill(4)
+    checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
+    custom_model.load_weights(checkpoint_path)
 
     # import pdb
     # pdb.set_trace()
 
 
     custom_model.compile(
-        # optimizer=tf.keras.optimizers.Adam(learning_rate = config.base_lr), 
-        optimizer=tf.keras.optimizers.Adam(learning_rate = lr_schedule, clipvalue = 0.5), 
+        optimizer=tf.keras.optimizers.Adam(learning_rate = config.base_lr, clipvalue = 0.5), 
+        # optimizer=tf.keras.optimizers.Adam(learning_rate = lr_schedule, clipvalue = 0.5), 
         # loss_fn = custom_loss)
         loss_fn = yolov3_custom_loss)
 
