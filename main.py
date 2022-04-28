@@ -749,6 +749,7 @@ if __name__ == "__main__":
     ds_train = ds_train.repeat()
     ds_train = ds_train.shuffle(config.shuffle_buffer)
     ds_train = ds_train.batch(config.batch_size, drop_remainder=True)
+    ds_train = ds_train.prefetch(64)
 
     
     '''
@@ -841,7 +842,7 @@ if __name__ == "__main__":
     # custom_model.load_weights(checkpoint_path)
 
 
-    previous_epoch = str(5).zfill(4)
+    previous_epoch = str(6).zfill(4)
     checkpoint_path = "./model/detection_cp-"+previous_epoch+"/detection.ckpt"
     custom_model.load_weights(checkpoint_path)
 
